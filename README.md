@@ -13,9 +13,11 @@ $ pip install utopia
 Then run the `utopia` model with example data and plot the results:
 
 ```python
-from utopia import utopiaModel 
-from results_processing.mass_balance_check import*
-from results_processing.process_results import*
+from utopia.utopia import utopiaModel
+from utopia.results_processing.process_results import*
+from utopia.results_processing.mass_balance_check import*
+
+
 
 # Create the model, pass it example config and data, then run it
 config_data = utopiaModel.load_json_file("data/default_config.json")
@@ -27,26 +29,12 @@ model.run()
 # Process results and print and plot them
 massBalance(model)
 processor = ResultsProcessor(model)
-processor.estimate_flows()
-processor.generate_flows_dict()
-processor.process_results()
-for fraction in ["mass_fraction", "number_fraction"]:
-    processor.plot_fractionDistribution_heatmaps(fraction)
+processor.process_all()  # Process all results
 
-processor.extract_results_by_compartment()
-for fraction in ["%_mass", "%_number"]:
-    processor.plot_compartment_distribution(fraction)
-processor.results_by_comp
-
-for i in range(len(processor.results_by_comp)):
-    emissions=sum(processor.model.emiss_dict_g_s[processor.results_by_comp['Compartments'].iloc[i]].values())
-    print(f"Mass balance for {processor.results_by_comp['Compartments'].iloc[i]}: {processor.results_by_comp['Total_inflows_g_s'].iloc[i]+emissions-processor.results_by_comp['Total_outflows_g_s'].iloc[i]}")
-
-# Calculate exposure indicators
-processor.estimate_exposure_indicators()
-processor.overall_exposure_indicators
-processor.size_fraction_indicators
-processor.estimate_emission_fractions()
+# Print exposure indicators
+processor.processed_results["Overall_exposure_indicators"]
+processor.processed_results["size_fraction_indicators"]
+pd.DataFrame(processor.processed_results["emission_fractions_mass_data"])
 ```
 
 ## Contributing
