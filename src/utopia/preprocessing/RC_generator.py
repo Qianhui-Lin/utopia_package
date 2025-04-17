@@ -2,8 +2,8 @@ import math
 import pandas as pd
 import os
 import numpy as np
-from globalConstants import *
-from helpers import generate_fsd_matrix
+from utopia.globalConstants import *
+from utopia.helpers import generate_fsd_matrix
 
 
 def discorporation(particle, model):
@@ -111,7 +111,7 @@ def fragmentation(particle, model):
     return k_frag.tolist()
 
 
-from preprocessing.rc_settling import *
+from utopia.preprocessing.rc_settling import *
 
 
 def settling(particle, model):

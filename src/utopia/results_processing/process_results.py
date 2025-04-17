@@ -3,18 +3,19 @@ import numpy as np
 import seaborn as sns
 from matplotlib.colors import LogNorm
 import pandas as pd
-from helpers import *
-from preprocessing.fill_interactions_dictionaries import *
-from results_processing.exposure_indicators_calculation import *
-from solver_steady_state import *
-from results_processing.emission_fractions_calculation import *
+from utopia.helpers import *
+from utopia.preprocessing.fill_interactions_dictionaries import *
+from utopia.results_processing.exposure_indicators_calculation import *
+from utopia.solver_steady_state import *
+from utopia.results_processing.emission_fractions_calculation import *
+#from utopia.results_processing.pdf_reporting import *
 
 
 class ResultsProcessor:
     """Provides functionalities for restructuring, analysing and plotting the UTOPIA model results."""
 
     def __init__(self, model):
-
+        self.processed_results = {}  # empty dictionary to store results
         self.model = model
         self.R = model.R
         self.Results_extended = None
@@ -147,8 +148,8 @@ class ResultsProcessor:
             sum(Results_extended2.iloc[i].outflows_num_s.values())
             for i in range(len(Results_extended2))
         ]
-
         self.Results_extended = Results_extended2
+        self.processed_results["Results_extended"] = Results_extended2
 
     def addFlows_to_results_df(self, Results_extended):
         """Calculate inflows and outflows (mass and number) and update Results_extended."""
@@ -309,7 +310,7 @@ class ResultsProcessor:
         fig = plt.gcf()
         plt.show()
 
-        # return fig, titlename
+        return fig  # , titlename
 
     def generate_flows_dict(self):
         for unit in ["mass", "number"]:
@@ -643,6 +644,7 @@ class ResultsProcessor:
         ]
 
         self.results_by_comp = results_by_comp
+        self.processed_results["results_by_comp"] = results_by_comp
 
     def create_rateConstants_table(self):
         df_dict = {
@@ -662,8 +664,8 @@ class ResultsProcessor:
         df2 = df["Rate_Constants"].apply(pd.Series)
         df = df.drop(columns="Rate_Constants")
         df3 = pd.concat([df, df2], axis=1)
-
         self.RC_df = df3
+        self.processed_results["RateConstants_df"] = df3
 
     def plot_rateConstants(self):
         def sum_if_list(value):
@@ -684,6 +686,8 @@ class ResultsProcessor:
         plt.xticks(rotation=90)
         plt.title("Distribution of rate constants as log(k_s-1)")
         plt.show()
+        fig = plt.gcf()
+        self.processed_results["RC_violin_plot"] = fig
 
     def plot_compartment_distribution(
         self, mass_or_number
@@ -728,25 +732,68 @@ class ResultsProcessor:
         plt.title(f"{mass_or_number} Distribution by Compartment")
         plt.gca().invert_yaxis()  # Invert y-axis to match sorting order
         plt.show()
+        fig = plt.gcf()
+        return fig
 
     def process_all(self):
-        """Runs all processing steps in order automatically."""
+        """Runs all processing steps in order automatically and stores the results in the processed_results dictionary of the the class."""
+        self.create_rateConstants_table()
+        self.plot_rateConstants()
         self.estimate_flows()
         self.generate_flows_dict()
         self.process_results()
+        fraction_heatmaps = dict()
         for fraction in ["mass_fraction", "number_fraction"]:
-            self.plot_fractionDistribution_heatmaps(fraction)
+            fraction_heatmaps[fraction] = self.plot_fractionDistribution_heatmaps(
+                fraction
+            )
+        self.processed_results["fraction_heatmaps"] = fraction_heatmaps
         self.extract_results_by_compartment()
+        comp_distribution_barcharts = dict()
         for fraction in ["%_mass", "%_number"]:
-            self.plot_compartment_distribution(fraction)
+            comp_distribution_barcharts[fraction] = self.plot_compartment_distribution(
+                fraction
+            )
+        self.processed_results["comp_distribution_barcharts"] = (
+            comp_distribution_barcharts
+        )
+
+        # Calculate exposure indicators
+        self.estimate_exposure_indicators()
+        self.estimate_emission_fractions()
 
     def estimate_exposure_indicators(self):
         """Estimate overall size dependent exposure indicators"""
-        Exposure_indicators_calculation(self)
+        (
+            self.processed_results["Overall_exposure_indicators"],
+            self.processed_results["size_fraction_indicators"],
+        ) = Exposure_indicators_calculation(self)
 
     def estimate_emission_fractions(self):
         """Estimate mass emission fractions:
         - Environmentally Dispersed Fraction (ϕ1): quantifies the relative extent to which the pollutants (MPs) can reach remote regions.
         - Remotely transferred fraction of mass (ϕ2) expresses the relative extent to which the MPs are (net) transferred to the target remote compartment following environmental dispersion to the remote region.
         """
-        self.emission_fractions_mass_data = estimate_emission_fractions(self)
+        (
+            self.processed_results["emission_fractions_mass_data"],
+            self.processed_results["emission_fractions_mass_figure"],
+        ) = estimate_emission_fractions(self)
+
+    # def generate_pdf_report(self):
+    #     # Create and populate the PDF
+    #     pdf = PDFReport()
+    #     pdf.add_page()
+
+    #     for name, result in self.processed_results.items():
+    #         pdf.set_font("Arial", "B", 12)
+    #         pdf.cell(0, 10, name, ln=True)
+    #         if isinstance(result, dict):
+    #             pdf.add_dict(result)
+    #         elif isinstance(result, pd.DataFrame):
+    #             pdf.add_dataframe(result)
+    #         elif isinstance(result, plt.Figure):
+    #             pdf.add_figure(result)
+    #         else:
+    #             pdf.add_text(str(result))
+
+    #     pdf.output("results_report.pdf")

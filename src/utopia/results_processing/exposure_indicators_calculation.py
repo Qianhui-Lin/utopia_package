@@ -447,9 +447,9 @@ def Exposure_indicators_calculation(model):
     )
     size_fraction_indicators["Tov (years)"] = Tov_size_dict_years.values()
 
-    model.overall_exposure_indicators = overall_exposure_indicators
-    model.size_fraction_indicators = size_fraction_indicators
-
+    # model.overall_exposure_indicators = overall_exposure_indicators
+    # model.size_fraction_indicators = size_fraction_indicators
+    return (overall_exposure_indicators, size_fraction_indicators)
     # return (
     #     Pov_mass_years,
     #     Pov_num_years,

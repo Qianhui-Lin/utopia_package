@@ -6,10 +6,11 @@ import os
 from datetime import datetime
 import math
 import numpy as np
-from preprocessing.objects_generation import *
-from preprocessing.generate_rate_constants import *
-from preprocessing.fill_interactions_df import *
-from solver_steady_state import *
+from pathlib import Path
+from utopia.preprocessing.objects_generation import *
+from utopia.preprocessing.generate_rate_constants import *
+from utopia.preprocessing.fill_interactions_df import *
+from utopia.solver_steady_state import *
 
 import json
 
@@ -28,12 +29,13 @@ class utopiaModel:
 
     def __init__(self, config: None, data: None, validate=True):
         """Initialize the UTOPIA model"""
+        self.base_path = Path(__file__).resolve().parent / "data"
 
         # Load default config and data if not provided
         if config is None:
-            config = self.load_json_file("data/default_config.json")
+            config = self.load_json_file(self.base_path / "default_config.json")
         if data is None:
-            data = self.load_json_file("data/default_data.json")
+            data = self.load_json_file(self.base_path / "default_data.json")
 
         # Validate the config and data inputs
         if validate:
@@ -49,15 +51,18 @@ class utopiaModel:
         self.generate_coding_dictionaries()
 
     @staticmethod
-    def load_json_file(filename):
-        """Load a JSON file from the package data directory."""
-        filepath = os.path.join(os.path.dirname(__file__), filename)
-        with open(filepath, "r") as file:
-            return json.load(file)
+    def load_json_file(filepath):
+        base_path = os.path.dirname(__file__)
+        full_path = os.path.join(base_path, filepath)
+
+        with open(full_path, "r", encoding="utf-8") as f:
+            return json.load(f)
 
     @staticmethod
-    def load_csv_column(file_path, column_name):
+    def load_csv_column(filename, column_name):
         """Load a column from input CSV file: Reads a single column from a CSV file and returns it as a list"""
+        base_path = Path(__file__).resolve().parent / "data"
+        file_path = base_path / filename
         df = pd.read_csv(file_path, usecols=[column_name])
         return df[column_name].tolist()
 
@@ -102,7 +107,42 @@ class utopiaModel:
 
         self.check_required_keys(data, required_data_keys, "data")
         self.check_required_keys(config, required_config_keys, "config")
+        
+        # Type and value checks
+        if not isinstance(data["MPdensity_kg_m3"], (int, float)):
+            raise TypeError("MPdensity_kg_m3 must be a number.")
 
+        if data["MPdensity_kg_m3"] <= 0:
+            raise ValueError("MPdensity_kg_m3 must be positive.")
+
+    # Add more checks as needed (TO BE ADDED!)
+
+    
+    def modify_and_save_data(self, data, modifications, filename):
+        """
+        Modify the provided data dictionary with the given modifications and save to a JSON file.
+
+        Parameters:
+        - data: Original data dictionary.
+        - modifications: Dictionary containing keys and new values to update in the data.
+        - filename: Name of the JSON file to save the modified data.
+        """
+        # Apply modifications
+        for key, value in modifications.items():
+            if key in data:
+                data[key] = value
+            else:
+                raise KeyError(f"Invalid key in modifications: {key}")
+
+        # Save the modified data
+        self.save_json_file(data, filename)
+    
+    def save_json_file(self, data, filename):
+        output_path = self.base_path / filename
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        print(f"Modified data saved to {output_path}")
+    
     def load_parameters(self):
         """Loads required parameters from config and data dictionaries."""
 
@@ -138,7 +178,7 @@ class utopiaModel:
         # Load parameters from config and data dictionaries
         self.MPforms_list = self.config["MPforms_list"]
         self.compartments_list = self.load_csv_column(
-            f"data/{self.comp_input_file_name}", "Cname"
+            self.comp_input_file_name, "Cname"
         )
         self.solver = self.config["solver"]
         self.compartment_types = self.config["compartment_types"]

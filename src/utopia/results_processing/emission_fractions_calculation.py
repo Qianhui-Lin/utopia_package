@@ -1,7 +1,7 @@
 import copy
 import pandas as pd
 
-pd.set_option("future.no_silent_downcasting", True)
+
 # from results_processing.process_results import ResultsProcessor
 import matplotlib.pyplot as plt
 
@@ -289,11 +289,11 @@ def plot_emission_fractions(emission_fractions_data, emiss_comp):
     plt.tight_layout()
     fig = plt.gcf()
     plt.show()
-    # return fig
+    return fig
 
 
 def estimate_emission_fractions(processor):
-    from results_processing.process_results import ResultsProcessor
+    from utopia.results_processing.process_results import ResultsProcessor
 
     """Estimate emission fractions"""
     # For estimating the emission fractions we need to make emissions to targeted compartments.
@@ -356,9 +356,9 @@ def estimate_emission_fractions(processor):
             if value > 0:
                 emiss_comp.append(compartment)
 
-    plot_emission_fractions(emission_fractions_mass_data, emiss_comp)
+    fig = plot_emission_fractions(emission_fractions_mass_data, emiss_comp)
 
-    return emission_fractions_mass_data
+    return (emission_fractions_mass_data, fig)
 
     ###Continue here. I need an etry for emiss comp and to add the function missing above
 
