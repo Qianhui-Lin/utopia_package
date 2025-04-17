@@ -37,6 +37,8 @@ processor.processed_results["size_fraction_indicators"]
 pd.DataFrame(processor.processed_results["emission_fractions_mass_data"])
 ```
 
+[Access the user step by step guide here.](https://github.com/PradoDomercq/utopia_package/blob/main/docs/model_tutorial.ipynb) 
+
 ## Contributing
 
 Interested in contributing? Check out the contributing guidelines. Please note that this project is released with a Code of Conduct. By contributing to this project, you agree to abide by its terms.
@@ -44,10 +46,6 @@ Interested in contributing? Check out the contributing guidelines. Please note t
 ## License
 
 `utopia` was created by Prado Domercq. It is licensed under the terms of the MIT license.
-
-## Credits
-
-`utopia` was created with [`cookiecutter`](https://cookiecutter.readthedocs.io/en/latest/) and the `py-pkgs-cookiecutter` [template](https://github.com/py-pkgs/py-pkgs-cookiecutter).
 
 ## Acknowledgements
 
