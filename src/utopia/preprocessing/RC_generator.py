@@ -619,19 +619,14 @@ def burial(particle, model):
 
 
 def soil_air_resuspension(particle, model):
-    # REF: global average soil-air 6x10^-10 m/h  and max value 10^-7 m/h. Qureshi et al. (2009) ## We should include a density factor...
+    # REF: global average soil-air 6x10^-10 m/h  and max value 10^-7 m/h. Qureshi et al. (2009) ## We should include a density factor. This transfer velocity was estimated by dividing estimates of vertical soil aerosol suspension fluxes by the density of the soil particles (2500kgm-3). We will make the sar_rate  density dependent using the particle density.
 
-    sar_rate = 10e-10 / 60 / 60  # converted to m/s
+    sar_rate = 10e-10 / 60 / 60  # m/s
+    ssr_flow = sar_rate * 2500  # kg/m2s
 
-    sar_rate_dict = {
-        "a": sar_rate,
-        "b": sar_rate,
-        "c": sar_rate,
-        "d": sar_rate,
-        "e": sar_rate,
-    }
-
-    k_sa_reusp = sar_rate / float(particle.Pcompartment.Cdepth_m)
+    k_sa_reusp = (sar_rate / particle.Pdensity_kg_m3) / float(
+        particle.Pcompartment.Cdepth_m
+    )
 
     return k_sa_reusp
 
