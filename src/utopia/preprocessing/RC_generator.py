@@ -7,7 +7,7 @@ from utopia.helpers import generate_fsd_matrix
 
 
 def discorporation(particle, model):
-    # Process by wich the particle looses is corporeal ("particle") form (eq to degradation) though degradation into dissolved organics?. It is considered an elimination process .
+    # Process by wich the particle looses is corporeal ("particle") form (eq to degradation) though degradation into monomers and oligomers and other degradation products such as carboxylic acids. It is considered an elimination process in this model as UTOPIA only keeps track of the particulate material .
     # t_half_deg is provided as input in days and is converted to seconds. It refers to the degradation half-life of free MPs in the biggest size fraction and in the surface water compartments.
     # List of asumptions
     # The degradation rate of MPs is size, compartment and aggregation state dependent.
@@ -619,12 +619,12 @@ def burial(particle, model):
 
 
 def soil_air_resuspension(particle, model):
-    # REF: global average soil-air 6x10^-10 m/h  and max value 10^-7 m/h. Qureshi et al. (2009) ## We should include a density factor. This transfer velocity was estimated by dividing estimates of vertical soil aerosol suspension fluxes by the density of the soil particles (2500kgm-3). We will make the sar_rate  density dependent using the particle density.
+    # REF: global average soil-air 6x10^-10 m/h  and max value 10^-7 m/h. Qureshi et al. (2009) ## We should include a density factor. This transfer velocity was estimated by dividing estimates of vertical soil aerosol suspension fluxes by the density of the soil particles (2500kgm-3). We will make the sar_rate density dependent using the particle density.
 
-    sar_rate = 10e-10 / 60 / 60  # m/s
+    sar_rate = (10e-10 / 60) / 60  # m/s
     ssr_flow = sar_rate * 2500  # kg/m2s
 
-    k_sa_reusp = (sar_rate / particle.Pdensity_kg_m3) / float(
+    k_sa_reusp = (ssr_flow / particle.Pdensity_kg_m3) / float(
         particle.Pcompartment.Cdepth_m
     )
 
@@ -677,7 +677,6 @@ def percolation(particle, model):
 
 def runoff_transport(particle, model):
     # transport from top soil layers to surface waters ["Coast_Surface_Water","Surface_Freshwater"] via runoff water
-    # to be formulated
 
     # REF: BETR global approach for MTCsoilrunoff = 2.3 * 10 ^ -8  (m/h) 'soil solids runoff rate  (Scheringer, P230)
 
@@ -733,22 +732,105 @@ def wind_trasport(particle, model):
 
 
 def dry_deposition(particle, model):
+    from utopia.preprocessing.dry_deposition_MS import (
+        ReynoldsNumberFromStokes,
+        kineticCstdrySettlingNewtonSphere,
+        get_settling,
+    )
+
+    # particles depossition from air to soil or water compartments
+    air_v_m_s = 2  # Assuming average wind speed of 2 m/s
+
+    # According to A. Praetorius et al. 2025."A mechanistic approach to evaluating atmospheric deposition of micro- and nanoplastic particles" (https://doi.org/10.21203/rs.3.rs-5672180/v1):
+
+    # Taking the values from A. Praetorius et al. 2025:
+
+    # Dry deposition is shape and size dependent:
+
+    if particle.Pshape == "sphere":
+
+        # Example usage
+        d = particle.diameter_m
+        rho = particle.Pdensity_kg_m3
+        Rep = ReynoldsNumberFromStokes(d, rho)
+
+        initial_Rep = ReynoldsNumberFromStokes(d, rho)
+        initial_Settling = kineticCstdrySettlingNewtonSphere(
+            d, rho, Rep
+        )  # Initial guess for settling velocity
+        settling_velocity = get_settling(initial_Settling, d, rho, initial_Rep)
+        # print("Final settling velocity:", settling_velocity, ReynoldsNumberFromVg(d, rho, settling_velocity))
+
+        v_dd = settling_velocity
+
+    #     if particle.diameter_um <= 17:
+    #         # For particles < 16.7 um we use Brownian regime to describe settling velocity
+    #         λ = 6.635e-8  # λ is the mean free path of the fluid molecules (m)
+    #         A_1 = 1.252  # Coeficients from S. G. Jenning (Jennings, S. G. The mean free path in air. Journal of Aerosol Science 19, 159–166 (1988))
+    #         A_2 = 0.399
+    #         A_3 = 1.100
+    #         Cc = 1 + (2 * λ / particle.diameter_m) * (
+    #             A_1 + A_2 ** (-A_3 * particle.diameter_m / 2 * λ)
+    #         )
+    #         v_dd = (
+    #             g_m_s2
+    #             / 18
+    #             * mu_air_21C_kg_ms
+    #             * (particle.diameter_m**2)
+    #             * (particle.Pdensity_kg_m3 - density_air_kg_m3)
+    #             * Cc
+    #         )
+
+    #     elif (particle.diameter_um > 17) and (particle.diameter_um <= 76):
+    #         # For particles > 17 um and < 76 um we use the Stockes regime to describe settling velocity
+    #         v_dd = (
+    #             g_m_s2
+    #             / 18
+    #             * mu_air_21C_kg_ms
+    #             * (particle.diameter_m**2)
+    #             * (particle.Pdensity_kg_m3 - density_air_kg_m3)
+    #         )
+
+    #     elif particle.diameter_um > 76:
+    #         # For particles > 76 we use the Newton regime to describe settling velocity
+    #         v_dd = math.sqrt(
+    #             (
+    #                 4
+    #                 * g_m_s2
+    #                 * particle.diameter_m
+    #                 * (particle.Pdensity_kg_m3 - density_air_kg_m3)
+    #             )
+    #             / (3 * Cd * density_air_kg_m3)
+    #         )
+
+    #     else:
+
+    #         pass
+
+    # # particles depossition from air to soil or water compartments
+
+    # else:
+    #     print("Other shpaes than spherical are not implemented yet")
+
+    # Impact of land surface characteristics on dry deposition to be added later (e.g. vegetation, surface roughness, etc.)
+
+    # Should we use the air compartment depth (1000 m)or a shorter distance?
     # particles depossition from air to soil or water compartments
 
     # Discuss if to use the dry depossition fractions of distribution here or move it into the fill_interactions function as done for runoff and fragments (we would contruct a dry deposition distribution matrix with the corresponding surface area ratios)
 
     # Based on figure 6.4 in the Handbook of Chemical Mass Transport in the Environment (2011). Dry deposition rate is size dependent
 
-    dd_rate = 7.91e-6
+    # dd_rate = 7.91e-6
 
     dd_rate_dict = {
-        "e": dd_rate * 1000,
-        "d": dd_rate * 100,
-        "c": dd_rate,
-        "b": dd_rate / 100,
-        "a": dd_rate / 1e4,
+        "e": v_dd / 500,
+        "d": v_dd / 500,
+        "c": v_dd / 500,
+        "b": v_dd / 500,
+        "a": v_dd / 500,
     }
-
+    # Half of the air column depth (500m) is used to calculate the dry deposition rate constant. Assuming a planetary boundary hight of 1000m (Potentially make it different for different size classes)
     k_dry_depossition = [
         dd_rate_dict[particle.Pcode[0]]
         * (
@@ -769,16 +851,24 @@ def wet_deposition(particle, model):
     # wd_rate=?
     # k_dry_depossition = wd_rate*float(particle.Pcompartment.CsurfaceArea_m2)/float(dict_comp["Air"].CsurfaceArea_m2)
 
-    k_wet_depossition = 0
+    # The rate constant for wet deposition for all sizes and densities is assumed to be the same.
+    t_dry = 120 * 60 * 60  # seconds
+    t_wet = 12 * 60 * 60  # seconds
+    k_wet = 2 * (t_dry + t_wet) / (t_dry**2)
+
+    k_wet_depossition = k_wet
     return k_wet_depossition
 
 
 def sea_spray_aerosol(particle, model):
     # particles resuspension from ocean and coastal surface waters to air
-    # REF: REF: Qureshi et al. (2009) approach for ocean-air resuspension (10^-5 m/h) Maximum value = 10^-5 m/h!! Global average value 10^-8. We should include a density factor...
-    ssa_rate = 10e-5 / 60 / 60
+    # REF: Qureshi et al. (2009) estimated globally and temporally averaged suspension velocities are 6 × 10−10 m h−1 for soil aerosol suspension and 8 × 10−9 m h−1 for marine aerosol suspension (Qureshi et al., 2009)
 
-    k_sea_spray_aerosol = ssa_rate / float(particle.Pcompartment.Cdepth_m)
+    ssa_rate = 8e-9 / 60 / 60
+    ssa_flow = ssa_rate * 2250  # kg/m2s_flow
+    k_sea_spray_aerosol = (ssa_flow / particle.Pdensity_kg_m3) / float(
+        particle.Pcompartment.Cdepth_m
+    )
 
     ssa_rate_dict = {
         "a": ssa_rate,
