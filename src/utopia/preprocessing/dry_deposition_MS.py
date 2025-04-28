@@ -24,7 +24,7 @@ def ReynoldsNumberFromStokes(d, rho):
     Rep = np.multiply(Rep, d)
     Rep = np.multiply(Rep, (1.0 / muAir))
 
-    print("XRe= ", Rep, Rep / 3.0)
+    # print("XRe= ", Rep, Rep / 3.0)
 
     # Set Rep to a specific value for test (e.g., 13.4) !!!!!!!!!!! to remoove after test
     # Rep_value = 13.35
@@ -74,7 +74,7 @@ def kineticCstdrySettlingNewtonSphere(d, rho, Rep):
 
     # Calculate the drag coefficient Cd
     Cd = dragCoefficient(d, rho, Rep)
-    print("Cd sphere=", Cd)
+    # print("Cd sphere=", Cd)
     # Calculate the settling velocity
     v = np.sqrt(4.0 * d * g0 * (rho - rhoAir) / (3.0 * Cd * rhoAir))
     # v = np.sqrt(4.0 * d * g0 * (rho) / (3.0 * Cd * rhoAir))
@@ -115,7 +115,7 @@ def get_settling(initial_Settling, d, rho, initial_Rep):
 
         # Check for convergence
         cvg = abs((settling_new - settling_old) / settling_new)
-        print("convergence <", tolerance, "?=", cvg)
+        # print("convergence <", tolerance, "?=", cvg)
         if np.all(cvg < tolerance):
             break
 

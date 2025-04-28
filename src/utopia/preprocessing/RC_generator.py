@@ -725,7 +725,7 @@ def beaching(particle, model):
 
 
 def wind_trasport(particle, model):
-    # diffusive transport of particles via wind speed (we should not need this process since ther is onlt one air compartment)
+    # diffusive transport of particles via wind speed (we should not need this process since ther is onlt one air compartment).Would be needed in a Gloabl model.
     # to be formulated as funcion of compartment property: wind_speed_m_s
     k_wind_transport = 0
     return k_wind_transport
@@ -844,19 +844,35 @@ def dry_deposition(particle, model):
 
 
 def wet_deposition(particle, model):
-    # Currently turned off
+
     # particles depossition from air to soil or water compartments via rainfall
-    # wont be formulated as function of rainfall intensity but dependent on the average rain events per year. we asume that any rain event will trigger the depossition of the particles regardless of rainfall intensity
-    # IN  SimpleBox for Plastics rate constant wet depossition 1.17E-1(s-1) Has to be corrected by the number of wet event and duration...so mean rate of depossition will be used
-    # wd_rate=?
-    # k_dry_depossition = wd_rate*float(particle.Pcompartment.CsurfaceArea_m2)/float(dict_comp["Air"].CsurfaceArea_m2)
+    # wont be formulated as function of rainfall intensity but dependent on the average rain events per year. we asume that any rain event will trigger the depossition of the particles regardless of rainfall intensity.
 
     # The rate constant for wet deposition for all sizes and densities is assumed to be the same.
-    t_dry = 120 * 60 * 60  # seconds
+    # seconds REF: Table 6.5 in the Handbook of Chemical Mass Transport in the Environment (2011). Recommended Generic Yearly Average Values of time between Rain Events (tdry=120 h) and Duration of Rain Events (twet=12 h)
+
+    t_dry = 120 * 60 * 60
     t_wet = 12 * 60 * 60  # seconds
     k_wet = 2 * (t_dry + t_wet) / (t_dry**2)
 
-    k_wet_depossition = k_wet
+    wd_rate_dict = {
+        "e": k_wet,
+        "d": k_wet,
+        "c": k_wet,
+        "b": k_wet,
+        "a": k_wet,
+    }
+
+    k_wet_depossition = [
+        wd_rate_dict[particle.Pcode[0]]
+        * (
+            float(model.dict_comp[c].CsurfaceArea_m2)
+            / float(model.dict_comp["Air"].CsurfaceArea_m2)
+        )
+        for c in list(model.dict_comp.keys())
+        if "Surface" in c
+    ]
+
     return k_wet_depossition
 
 
