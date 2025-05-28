@@ -47,7 +47,7 @@ Ready to contribute? Here's how to set up `utopia` for local development.
 2. Create and activate a conda environment for `utopia`:
 
     ```console
-    $ conda create -n utopia python=3.10
+    $ conda create -n utopia python=3.9
     $ conda activate utopia
     ```
 

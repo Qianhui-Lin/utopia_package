@@ -1,0 +1,39 @@
+{
+    "big_bin_diameter_um": 5000,
+    "N_sizeBins": 5,
+    "vol_algal_cell_m3": 2.0e-16,
+    "spm_density_kg_m3": 1388, 
+    "boxName": "Utopia",
+    "comp_input_file_name": "inputs_compartments.csv",
+    "comp_interactFile_name": "compartment_interactions.csv",
+    "MPforms_list":["freeMP", "heterMP", "biofMP", "heterBiofMP"],
+    "solver": "SteadyState",
+    "compartment_types": {
+        "UTOPIA_surfaceSea_water_compartments": [
+            "Ocean_Surface_Water",
+            "Coast_Surface_Water"
+        ],
+        "UTOPIA_water_compartments": [
+            "Ocean_Mixed_Water",
+            "Ocean_Column_Water",
+            "Coast_Column_Water",
+            "Surface_Freshwater",
+            "Bulk_Freshwater"
+        ],
+        "UTOPIA_deep_soil_compartments": [
+            "Beaches_Deep_Soil",
+            "Background_Soil",
+            "Impacted_Soil"
+        ],
+        "UTOPIA_soil_surface_compartments": [
+            "Beaches_Soil_Surface",
+            "Background_Soil_Surface",
+            "Impacted_Soil_Surface"
+        ],
+        "UTOPIA_sediment_compartment": [
+            "Sediment_Freshwater",
+            "Sediment_Ocean",
+            "Sediment_Coast"
+        ],
+        "UTOPIA_air_compartments": ["Air"]
+    }}
