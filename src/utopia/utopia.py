@@ -7,10 +7,10 @@ from datetime import datetime
 import math
 import numpy as np
 from pathlib import Path
-from utopia.preprocessing.objects_generation import *
-from utopia.preprocessing.generate_rate_constants import *
-from utopia.preprocessing.fill_interactions_df import *
-from utopia.solver_steady_state import *
+from preprocessing.objects_generation import *
+from preprocessing.generate_rate_constants import *
+from preprocessing.fill_interactions_df import *
+from solver_steady_state import *
 
 import json
 

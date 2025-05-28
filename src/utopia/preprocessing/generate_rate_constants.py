@@ -1,4 +1,4 @@
-import utopia.preprocessing.RC_generator as RC_generator
+import preprocessing.RC_generator as RC_generator
 
 
 def generate_rate_constants(model):
