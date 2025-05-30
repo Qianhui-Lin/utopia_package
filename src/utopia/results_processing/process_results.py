@@ -3,12 +3,13 @@ import numpy as np
 import seaborn as sns
 from matplotlib.colors import LogNorm
 import pandas as pd
-from utopia.helpers import *
-from utopia.preprocessing.fill_interactions_dictionaries import *
-from utopia.results_processing.exposure_indicators_calculation import *
-from utopia.solver_steady_state import *
-from utopia.results_processing.emission_fractions_calculation import *
-#from utopia.results_processing.pdf_reporting import *
+from helpers import *
+from preprocessing.fill_interactions_dictionaries import *
+from results_processing.exposure_indicators_calculation import *
+from solver_steady_state import *
+from results_processing.emission_fractions_calculation import *
+
+# from utopia.results_processing.pdf_reporting import *
 
 
 class ResultsProcessor:
@@ -722,7 +723,7 @@ class ResultsProcessor:
 
         # Get the list of colors based on the Compartments in the df
         bar_colors = df["Compartments"].map(compartment_colors)
-        
+
         # Plot
         fig, ax = plt.subplots(figsize=(8, len(df) * 0.4))
         bars = ax.barh(df["Compartments"], df[mass_or_number], color=bar_colors)
@@ -733,7 +734,9 @@ class ResultsProcessor:
         # Add labels to bars
         for bar in bars:
             width = bar.get_width()
-            ax.text(width + 1, bar.get_y() + bar.get_height() / 2, f"{width}%", va="center")
+            ax.text(
+                width + 1, bar.get_y() + bar.get_height() / 2, f"{width}%", va="center"
+            )
 
         # Labels and formatting
         ax.set_xlabel(mass_or_number)

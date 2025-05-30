@@ -1,6 +1,6 @@
 # This file contains the function that solves the steady state ODEs for the system of particles
 
-from utopia.helpers import mass_to_num, num_to_mass
+from helpers import mass_to_num, num_to_mass
 import pandas as pd
 import numpy as np
 

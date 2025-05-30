@@ -3,7 +3,7 @@
 import csv
 import pandas as pd
 import numpy as np
-from utopia.preprocessing.objects_generation import *
+from preprocessing.objects_generation import *
 
 
 def instantiate_compartments(inputs_path_file, compartment_types):
