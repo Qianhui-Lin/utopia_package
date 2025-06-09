@@ -3,11 +3,11 @@ import numpy as np
 import seaborn as sns
 from matplotlib.colors import LogNorm
 import pandas as pd
-from helpers import *
-from preprocessing.fill_interactions_dictionaries import *
-from results_processing.exposure_indicators_calculation import *
-from solver_steady_state import *
-from results_processing.emission_fractions_calculation import *
+from utopia.helpers import *
+from utopia.preprocessing.fill_interactions_dictionaries import *
+from utopia.results_processing.exposure_indicators_calculation import *
+from utopia.solver_steady_state import *
+from utopia.results_processing.emission_fractions_calculation import *
 
 # from utopia.results_processing.pdf_reporting import *
 
