@@ -1,3 +1,6 @@
+# Optional
+import json
+
 class Box:
     """Class box generates one object box representing the unit world in the case of the UTOPIA parameterization that can contain 17 compartments and that can have connexions to other boxes (for example if conecting several UTOPIA boxes to give spatial resolution to a global model)"""
 
@@ -68,3 +71,27 @@ class Box:
                 # print("Box volume: " + str(self.Bvolume_m3)+" m3")
         else:
             print("Box volume already assigned: " + str(self.Bvolume_m3) + " m3")
+
+    # Optional method to convert the Box object to JSON format
+    def to_json(self, pretty=True):
+        """Convert the Box object to JSON format"""
+        box_dict = {
+            "Bname": self.Bname,
+            "Bdepth_m": self.Bdepth_m,
+            "Blength_m": self.Blength_m,
+            "Bwidth_m": self.Bwidth_m,
+            "Bvolume_m3": self.Bvolume_m3,
+            "Bconexions": self.Bconexions,
+            "compartments": [
+                {
+                    "name": getattr(comp, 'Cname', 'Unknown'),
+                    "volume_m3": getattr(comp, 'Cvolume_m3', None)
+                } for comp in self.compartments
+            ],
+            "description": self.description
+        }
+        
+        if pretty:
+            return json.dumps(box_dict, indent=2, ensure_ascii=False)
+        else:
+            return json.dumps(box_dict, ensure_ascii=False)
