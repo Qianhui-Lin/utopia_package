@@ -3,7 +3,8 @@
 import csv
 import pandas as pd
 import numpy as np
-from utopia.preprocessing.objects_generation import *
+from utopia.microservice.generate_object.generate_object_app import *
+
 
 # in default_config.json, the inputs_path_file is set to "inputs_compartments.csv"
 # compartment_types=model.compartment_types
@@ -37,18 +38,18 @@ def instantiate_compartments(inputs_path_file, compartment_types):
     for c in compartments:
         if c["Cname"] in UTOPIA_water_compartments:
             obj = compartment_water(
-                Cname=c.get("Cname"),
-                SPM_mgL=parse_value(c.get("SPM_mgL")),
-                flowVelocity_m_s=parse_value(c.get("flowVelocity_m_s")),
-                waterFlow_m3_s=parse_value(c.get("waterFlow_m3_s")),
-                T_K=parse_value(c.get("T_K")),
-                G=parse_value(c.get("G")),
-                Cdepth_m=parse_value(c.get("Cdepth_m")),
-                Cvolume_m3=parse_value(c.get("Cvolume_m3")),
-                CsurfaceArea_m2=parse_value(c.get("CsurfaceArea_m2")),
+                Cname=c["Cname"],
+                SPM_mgL=parse_value(c["SPM_mgL"]),
+                flowVelocity_m_s=parse_value(c["flowVelocity_m_s"]),
+                waterFlow_m3_s=parse_value(c["waterFlow_m3_s"]),
+                T_K=parse_value(c["T_K"]),
+                G=parse_value(c["G"]),
+                Cdepth_m=parse_value(c["Cdepth_m"]),
+                Cvolume_m3=parse_value(c["Cvolume_m3"]),
+                CsurfaceArea_m2=parse_value(c["CsurfaceArea_m2"]),
             )
             waterComp_objects.append(obj)
-            waterComp_jsons.append(obj.to_json())
+            waterComp_jsons.append(obj.to_dict())
 
         elif c["Cname"] in UTOPIA_surfaceSea_water_compartments:
             obj = compartment_surfaceSea_water(
@@ -63,7 +64,7 @@ def instantiate_compartments(inputs_path_file, compartment_types):
                 CsurfaceArea_m2=parse_value(c.get("CsurfaceArea_m2")),
             )
             waterComp_objects.append(obj)
-            waterComp_jsons.append(obj.to_json())
+            waterComp_jsons.append(obj.to_dict())
             
 
         elif c["Cname"] in UTOPIA_sediment_compartment:
@@ -77,7 +78,7 @@ def instantiate_compartments(inputs_path_file, compartment_types):
             
             
             sedimentComp_objects.append(obj)
-            sedimentComp_jsons.append(obj.to_json())
+            sedimentComp_jsons.append(obj.to_dict())
 
         elif c["Cname"] in UTOPIA_deep_soil_compartments:
             obj = compartment_deep_soil(
@@ -89,7 +90,7 @@ def instantiate_compartments(inputs_path_file, compartment_types):
             
 
             soilComp_objects.append(obj)
-            soilComp_jsons.append(obj.to_json())
+            soilComp_jsons.append(obj.to_dict())
 
         elif c["Cname"] in UTOPIA_soil_surface_compartments:
             obj = compartment_soil_surface(
@@ -100,7 +101,7 @@ def instantiate_compartments(inputs_path_file, compartment_types):
                 )
             
             soilComp_objects.append(obj)
-            soilComp_jsons.append(obj.to_json())
+            soilComp_jsons.append(obj.to_dict())
 
         elif c["Cname"] in UTOPIA_air_compartments:
             obj = compartment_air(
@@ -113,7 +114,7 @@ def instantiate_compartments(inputs_path_file, compartment_types):
             
 
             airComp_objects.append(obj)
-            airComp_jsons.append(obj.to_json())
+            airComp_jsons.append(obj.to_dict())
 
         else:
             pass
@@ -131,7 +132,7 @@ def instantiate_compartments(inputs_path_file, compartment_types):
 
 # compartments 在objects_generation.py中是instantiate_compartments的返回值 
 # 这里初始的返回值只有Comp_objects, 我后来又加上了Comp_jsons ⚠️
-# 在这里假设compartments是json格式
+
 def set_interactions(compartments, connexions_path_file):
     # Create connexions attributes as dictionaries for the different #compartments from the compartmentsInteractions file
     with open(connexions_path_file, "r") as infile:
@@ -205,8 +206,9 @@ def generate_particles_from_df(particles_df):
     return particlesObj_list
 
 def generate_particles_json_from_df(particles_df):
-    """Generates a list of particle JSONs from a pandas DataFrame using to_dict()."""
+    """Generates both a list of Particulates objects and their JSON dicts from a pandas DataFrame."""
     
+    particles_obj_list = []
     particles_json_list = []
     for _, row in particles_df.iterrows():
         # Create the object first
@@ -220,10 +222,11 @@ def generate_particles_json_from_df(particles_df):
             PdimensionY_um=float(row["dimensionY_um"]),
             PdimensionZ_um=float(row["dimensionZ_um"]),
         )
+        particles_obj_list.append(particle_obj)
         # Convert to JSON and add to list
         particles_json_list.append(particle_obj.to_dict())
 
-    return particles_json_list
+    return particles_obj_list, particles_json_list
 
 
 def generate_system_species_list(
@@ -285,8 +288,8 @@ def generate_system_species_list_json(
         # Handle compartment data - assuming it's stored as nested JSON or reference
         #if isinstance(particle_json["Pcompartment"], dict):
             # If compartment is stored as nested JSON
-        compartment_name = particle_json["Pcompartment"]["Cname"]
-        box_name = particle_json["Pcompartment"]["CBox"]["Bname"]
+        compartment_name = particle_json["Pcompartment_Cname"]
+        box_name = particle_json["Pcompartment_CBox_Bname"]
         #else:
             # If compartment is stored as string reference or other format
             

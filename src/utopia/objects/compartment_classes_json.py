@@ -1,4 +1,5 @@
 import json
+from utopia.objects.particulate_classes_json import *
 class Compartment:
     """Class Compartment (parent class) generates compartment objects that belong by default to an assigned model box (Cbox). Each compartment contains four different particle objects corresponding to the 4 described aggregation states of UTOPIA (freeMP, heterMP, biofMP, heterBiofMP) and the processes that can occur in the compartment are listed under the processess attribute. Each compartment has a set of connexions withing the UTOPIA box listed in the conexions attribute wich will be asigned by reading on the conexions input file of the model."""
 
@@ -224,7 +225,7 @@ class compartment_surfaceSea_water(Compartment):
             "beaching",
         ]
 
-def to_json(self):
+    def to_json(self):
         """Convert surface sea water compartment object to JSON"""
         data = super().to_dict()
         data.update({
@@ -237,7 +238,7 @@ def to_json(self):
         })
         return json.dumps(data, indent=2)
 
-def to_dict(self):
+    def to_dict(self):
         """Convert surface sea water compartment object to dictionary"""
         data = super().to_dict()
         data.update({
@@ -429,17 +430,30 @@ class compartment_air(Compartment):
         return data
 
 
-def assign_box_to_compartment_json(compartment_json_str, box_json_str):
-    """Assign a box to a compartment JSON"""
-    # Parse JSON strings
-    compartment_dict = json.loads(compartment_json_str)
-    box_dict = json.loads(box_json_str)
-    
-    # Assign box to compartment
-    compartment_dict["CBox"] = box_dict
-    
-    return json.dumps(compartment_dict, indent=2, ensure_ascii=False)
+def assign_box_to_compartment_json(compartment_json_str, box_dict):
+    """Assign a box to a compartment JSON or dict
 
+    Args:
+        compartment_json_str: Compartment as JSON string or dict
+        box_dict: Box as JSON string or dict
+
+    Returns:
+        Compartment JSON string with box assigned
+    """
+    # Parse if input is a string
+    if isinstance(compartment_json_str, str):
+        compartment_dict = json.loads(compartment_json_str)
+    else:
+        compartment_dict = compartment_json_str
+
+    if isinstance(box_dict, str):
+        box_dict = json.loads(box_dict)
+
+    # Assign box to compartment
+    compartment_dict["CBox_Bname"] = box_dict["Bname"]
+
+    return compartment_dict
+'''
 def add_particles_to_compartment_json(compartment_json_str, particle_dict, particle_form):
     """Add particles to a compartment JSON
     
@@ -461,6 +475,69 @@ def add_particles_to_compartment_json(compartment_json_str, particle_dict, parti
     # Also assign compartment to particle if it has that field
     if isinstance(particle_dict, dict):
         particle_dict["assigned_compartment"] = compartment_dict["Cname"]
+    
+    return json.dumps(compartment_dict, indent=2, ensure_ascii=False)
+'''
+def add_particles_to_compartment_json(compartment_dict, particle_json_str, particle_form):
+    """Add particles to a compartment JSON
+    
+    Args:
+        compartment_json_str: JSON string of the compartment
+        particle_json_str: JSON string representing the particle
+        particle_form: String indicating particle form ('freeMP', 'heterMP', 'biofMP', 'heterBiofMP')
+    """
+    # Import the static method (adjust the import based on your file structure)
+    # from particulate import Particulate
+    # Or if you want to pass it as a parameter, see alternative below
+    
+    # Parse JSON strings
+
+    
+    if isinstance(particle_json_str, str):
+        particle_dict = json.loads(particle_json_str)
+    else:
+        particle_dict = particle_json_str
+    
+    # Validate particle form
+    if particle_form not in compartment_dict["particles"]:
+        raise ValueError(f"Invalid particle form: {particle_form}")
+    
+    # Ensure the particle form key exists as a list
+    if not isinstance(compartment_dict["particles"][particle_form], list):
+        compartment_dict["particles"][particle_form] = []
+    
+    # First, add the particle to the compartment's particles list
+    compartment_dict["particles"][particle_form].append(particle_dict)
+    
+    # Then, use the static method assign_compartment_json to assign compartment to particle
+    # This mimics particle.assign_compartment(self) where self is the entire compartment
+    updated_particle = Particulates.assign_compartment_json(particle_dict.copy(), compartment_dict)
+    
+    # Update the particle in the list with the one that has the compartment assigned
+    compartment_dict["particles"][particle_form][-1] = updated_particle
+    '''
+    for form, plist in compartment_dict["particles"].items():
+        for idx, p in enumerate(plist):
+            print(f"particles[{form}][{idx}] is {type(p)}")
+    这一段是用来debug是不是混入了object的
+    '''
+    '''
+    def find_non_serializable(obj, path=""):
+        # 只递归 dict 和 list
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                find_non_serializable(v, path + f"['{k}']")
+        elif isinstance(obj, list):
+            for idx, item in enumerate(obj):
+                find_non_serializable(item, path + f"[{idx}]")
+        else:
+            # 非基础类型
+            if not isinstance(obj, (str, int, float, bool, type(None), dict, list)):
+                print(f"Non-serializable object at {path}: {type(obj)}")
+
+    # 在 json.dumps 之前调用
+    find_non_serializable(compartment_dict)
+'''
     
     return json.dumps(compartment_dict, indent=2, ensure_ascii=False)
 

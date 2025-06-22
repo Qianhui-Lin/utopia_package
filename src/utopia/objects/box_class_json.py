@@ -1,4 +1,5 @@
 import json
+from utopia.objects.compartment_classes_json import *
 
 def create_box_json(
     Bname,
@@ -8,8 +9,8 @@ def create_box_json(
     Bvolume_m3=None,
     Bconexions=None,
 ):
-    if compartments is None:
-        compartments = []
+    #if compartments is None:
+    compartments = []
     
     box_dict = {
         "Bname": Bname,
@@ -21,19 +22,25 @@ def create_box_json(
         "compartments": [],
         "description": "Generic Box class"
     }
-    
-    return json.dumps(box_dict, indent=2, ensure_ascii=False)
+    # or can just return python dictionary like this:
+    return box_dict
+    # return json.dumps(box_dict, indent=2, ensure_ascii=False)
 
 def add_compartment_to_json(box_json_str, compartment_dict):
     """Add a compartment to an existing box JSON string"""
-    # Parse JSON string to dictionary
-    box_dict = json.loads(box_json_str)
+    # If input is a string, parse it; if it's already a dict, use as is
+    if isinstance(box_json_str, str):
+        box_dict = json.loads(box_json_str)
+    else:
+        box_dict = box_json_str
     
     # Add compartment
     box_dict["compartments"].append(compartment_dict)
+    assign_box_to_compartment_json(compartment_json_str = compartment_dict, box_dict = box_dict)
+    
     
     # Return updated JSON string
-    return json.dumps(box_dict, indent=2, ensure_ascii=False)
+    return box_dict
 
 
 def calc_volume_from_json(box_json_str):

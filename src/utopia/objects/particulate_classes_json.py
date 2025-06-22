@@ -83,6 +83,7 @@ class Particulates:
 
     
     # JSON-based methods that work directly on JSON dictionaries
+    # here particle_json should be a python dict
     @staticmethod
     def calc_volume_json(particle_json):
         """Particle volume calculation that works directly on JSON. Returns updated JSON."""
@@ -131,9 +132,27 @@ class Particulates:
     
     @staticmethod
     def assign_compartment_json(particle_json, comp):
-        """Compartment assignment that works directly on JSON. Returns updated JSON."""
-        # particle = particle_json.copy()  # not modify original 有待确认
-        particle_json["Pcompartment"] = comp
+        # 这里在updated_comp_json = add_particles_to_compartment_json(
+                        #comp,  # Convert current comp dict back to JSON string
+                        #p_copy,            # Pass the particle dict (function handles it)
+                        #p_form             # Pass the particle form
+                    #)出现了circular reference问题
+        # 
+        # 因此，可以仅存储compartment的名称或ID，而不是整个compartment dict，如下：
+        #particle_json["Pcompartment"] = comp.get("Cname") 
+        # 但是，我担心万一有用
+        # 所以，此处可以把comp直接存为str，同时也存储compartment的ID
+        # 后来发现，后面也用到了boxname，所以也存一下
+        # print("keys of comp:", list(comp.keys()))
+        particle_json["Pcompartment_Cname"] = comp["Cname"]
+        particle_json["Pcompartment_CBox_Bname"] = comp["CBox_Bname"]
+        
+        # particle_json["Pcompartment"] = json.dumps(comp) 这样好像不行
+
+        #particle = particle_json.copy()  # not modify original 有待确认
+        #或者：
+        #particle_json["Pcompartment"] = comp
+
         return particle_json
 
 
