@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 
 def generate_fsd_matrix(FI):
@@ -55,6 +56,17 @@ def sum_column_values(column):
 def process_flows(compartment, size_fraction, mp_form, flow_type, flows_dict):
     """Process flows (inflows or outflows) for a given compartment, size fraction, and MP form."""
     df_comp = flows_dict[flow_type][compartment]
+    df_filtered = df_comp[
+        (df_comp["MP_form"] == mp_form) & (df_comp["MP_size"] == size_fraction)
+    ]
+    df_cleaned = df_filtered.drop(["MP_size", "MP_form"], axis=1)
+    return {col: sum_column_values(df_cleaned[col]) for col in df_cleaned.columns}
+
+# 没用到，之后改🌞
+def process_flows_json(compartment, size_fraction, mp_form, flow_type, flows_dict):
+    """Process flows (inflows or outflows) for a given compartment, size fraction, and MP form."""
+    df_comp = pd.DataFrame(flows_dict[flow_type][compartment])
+    
     df_filtered = df_comp[
         (df_comp["MP_form"] == mp_form) & (df_comp["MP_size"] == size_fraction)
     ]
