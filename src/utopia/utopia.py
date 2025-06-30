@@ -265,6 +265,29 @@ class utopiaModel:
             self.particles_properties_df,
         ) = generate_objects(self)
         print("Generated model objects.")
+        # Print particles whose Pform is 'heterBiofMP'
+
+        def to_dict(obj, visited=None):
+            if visited is None:
+                visited = set()
+            obj_id = id(obj)
+            if obj_id in visited:
+                return f"<Recursion id={obj_id}>"
+            visited.add(obj_id)
+
+            if isinstance(obj, dict):
+                return {k: to_dict(v, visited) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [to_dict(item, visited) for item in obj]
+            elif hasattr(obj, "__dict__"):
+                return {k: to_dict(v, visited) for k, v in obj.__dict__.items()}
+            else:
+                return obj
+
+        for p in self.system_particle_object_list:
+                if hasattr(p, "Pform") and p.Pform == "biofMP":
+        # 递归转 dict 再美观打印
+                    print(json.dumps(to_dict(p), indent=4, ensure_ascii=False))
 
         # Estimate rate contants for all processess for each particle in the system
         generate_rate_constants(self)

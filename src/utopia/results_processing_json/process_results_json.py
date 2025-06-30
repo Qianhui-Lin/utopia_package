@@ -63,6 +63,7 @@ def plot_rateConstants_json(model_json):
         plt.show()
         fig = plt.gcf()
         # self.processed_results["RC_violin_plot"] = fig
+        return RC_df
 
 
 def estimate_flows_json(model_json, flow):
@@ -682,20 +683,20 @@ def extract_results_by_compartment_json(result,model_json,flow):
             compartment = results_by_comp.iloc[n]["Compartments"]
 
             # Calculate inflows and outflows for mass
-            inflows_mass = process_flows_comp(
+            inflows_mass = process_flows_comp_json(
                 compartment, "input_flows", flow["flows_dict_mass"]
             )
-            outflows_mass = process_flows_comp(
+            outflows_mass = process_flows_comp_json(
                 compartment, "output_flows", flow["flows_dict_mass"]
             )
             inflows_mass_list.append(inflows_mass)
             outflows_mass_list.append(outflows_mass)
 
             # Calculate inflows and outflows for number
-            inflows_num = process_flows_comp(
+            inflows_num = process_flows_comp_json(
                 compartment, "input_flows", flow["flows_dict_number"]
             )
-            outflows_num = process_flows_comp(
+            outflows_num = process_flows_comp_json(
                 compartment, "output_flows", flow["flows_dict_number"]
             )
             inflows_num_list.append(inflows_num)
@@ -725,9 +726,66 @@ def extract_results_by_compartment_json(result,model_json,flow):
 
         result["results_by_comp"] = results_by_comp
         #self.processed_results["results_by_comp"] = results_by_comp
-        return result["results_by_comp"]
+        return result
 
-## 到这里了 还没有检查process_flows_comp方面 需要改 🍅
+def plot_compartment_distribution_json(
+        result, mass_or_number
+    ):  # mass_or_number: "%_mass" or ""%_number""
+        """Bar chart plot of the mass or particle number distribution of particles by compartment."""
+        compartment_colors = {
+            "Ocean_Surface_Water": "#756bb1",
+            "Ocean_Mixed_Water": "#756bb1",
+            "Ocean_Column_Water": "#756bb1",
+            "Coast_Surface_Water": "#2c7fb8",
+            "Coast_Column_Water": "#2c7fb8",
+            "Surface_Freshwater": "#9ebcda",
+            "Bulk_Freshwater": "#9ebcda",
+            "Sediment_Freshwater": "#fdae6b",
+            "Sediment_Ocean": "#fdae6b",
+            "Sediment_Coast": "#fdae6b",
+            "Beaches_Soil_Surface": "#ffeda0",
+            "Beaches_Deep_Soil": "#ffeda0",
+            "Background_Soil_Surface": "#e5f5e0",
+            "Background_Soil": "#e5f5e0",
+            "Impacted_Soil_Surface": "#d95f0e",
+            "Impacted_Soil": "#d95f0e",
+            "Air": "#deebf7",
+        }
+
+        # Sort and round the values
+        df = (
+            result["results_by_comp"][["Compartments", mass_or_number]]
+            .round(2)
+            .sort_values(by=mass_or_number, ascending=False)
+        )
+
+        # Get the list of colors based on the Compartments in the df
+        bar_colors = df["Compartments"].map(compartment_colors)
+
+        # Plot
+        fig, ax = plt.subplots(figsize=(8, len(df) * 0.4))
+        bars = ax.barh(df["Compartments"], df[mass_or_number], color=bar_colors)
+
+        # Fix x-axis to 100%
+        ax.set_xlim(0, 100)
+
+        # Add labels to bars
+        for bar in bars:
+            width = bar.get_width()
+            ax.text(
+                width + 1, bar.get_y() + bar.get_height() / 2, f"{width}%", va="center"
+            )
+
+        # Labels and formatting
+        ax.set_xlabel(mass_or_number)
+        ax.set_ylabel("Compartments")
+        ax.set_title(f"{mass_or_number} Distribution by Compartment")
+        ax.invert_yaxis()  # To match sorting order
+
+        plt.tight_layout()
+        plt.show()
+
+        return fig
 
 class ResultsProcessor:
     """Provides functionalities for restructuring, analysing and plotting the UTOPIA model results."""
