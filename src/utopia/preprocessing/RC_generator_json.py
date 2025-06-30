@@ -60,7 +60,12 @@ def discorporation(particle, model_json):
     )
     # degradation rate constant
     k_deg = math.log(2) / (t_half_d * 24 * 60 * 60)
-
+    #if particle["Pform"] == "heterBiofMP":
+        #print("particle_diameter",particle["diameter_um"])
+        #print("MP_size_deg_factors",MP_size_deg_factors)
+        #print("t_half_d:",t_half_d)
+        
+        #print("k_deg",k_deg)
     return k_deg
 
 

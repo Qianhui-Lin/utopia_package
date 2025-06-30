@@ -90,7 +90,8 @@ class Particulates:
         # particle = particle_json.copy()  # not modify original 有待确认
          
         if particle_json["Pshape"] == "sphere":
-            radius_m = particle_json["PdimensionX_um"] / 1e6
+            # radius_m = particle_json["PdimensionX_um"] / 1e6
+            radius_m = particle_json["radius_m"]
             particle_json["Pvolume_m3"] = 4 / 3 * math.pi * (radius_m) ** 3
             particle_json["CSF"] = 1
             

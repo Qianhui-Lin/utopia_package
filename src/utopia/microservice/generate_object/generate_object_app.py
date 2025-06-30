@@ -20,10 +20,13 @@ def mongo_connect():
     input_collection = db['input_data']
 
     config_doc = config_collection.find_one()
-    config_doc_id = config_doc['_id']
+    config_doc_id = config_doc['_id'] if config_doc is not None else None
+
     input_doc = input_collection.find_one()
-    input_doc_id = input_doc['_id']
+    input_doc_id = input_doc['_id'] if input_doc is not None else None
+
     return client, db, config_collection, input_collection, config_doc, input_doc, config_doc_id, input_doc_id
+
 
 def initialize_mongo_collections():
     client, db, config_collection, input_collection, _, _, _, _ = mongo_connect()
