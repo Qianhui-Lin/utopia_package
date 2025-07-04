@@ -6,9 +6,9 @@ import os
 import sys
 from pathlib import Path
 from utopia.globalConstants import *
-from utopia.objects.box_class_json import *
-from utopia.objects.particulate_classes_json import *
-from utopia.objects.compartment_classes_json import *
+from utopia.microservice.generate_object.box_class_json import *
+from utopia.microservice.generate_object.particulate_classes_json import *
+from utopia.microservice.generate_object.compartment_classes_json import *
 from utopia.preprocessing.readinputs_from_csv_json import *
 import json
 import copy

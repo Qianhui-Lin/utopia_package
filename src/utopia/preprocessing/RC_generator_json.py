@@ -4,7 +4,7 @@ import os
 import numpy as np
 from utopia.globalConstants import *
 from utopia.helpers import generate_fsd_matrix
-from utopia.objects.compartment_classes_json import *
+from utopia.microservice.generate_object.compartment_classes_json import *
 
 def get_compartment_for_particle(particle, model_json):
     """
