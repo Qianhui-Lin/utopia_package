@@ -61,7 +61,7 @@ def add_derived_parameters():
         }}
     )
 
-def generate_particles_dataframe():
+def generate_particles_dataframe_json():
         client, db, config_collection, input_collection, config_doc, input_doc, config_doc_id, input_doc_id = mongo_connect()
 
         """Generates the microplastics input DataFrame from Utopia model attributes."""
@@ -103,7 +103,7 @@ def generate_particles_dataframe():
             )
         '''
           
-def generate_coding_dictionaries():
+def generate_coding_dictionaries_json():
     client, db, *_, = mongo_connect()
     model_json_collection = db["model_json"]
     model_json_doc = model_json_collection.find_one()
@@ -202,7 +202,7 @@ def create_model_json():
     # Emission scenario
     model_json["emiss_dict_g_s"] = input_doc["emiss_dict_g_s"]
 
-    model_json["particles_df"] = generate_particles_dataframe()
+    model_json["particles_df"] = generate_particles_dataframe_json()
 
     # Add base path
     base_path = Path(__file__).resolve().parent.parent.parent / "data"
@@ -213,9 +213,10 @@ def create_model_json():
     # Insert model_json into MongoDB collection "model_json" in the "utopia" database
     model_json_collection = db["model_json"]
     # model_json_collection.delete_many({})  #可选 清空以前的值
-    model_json_collection.insert_one(model_json)
+    result = model_json_collection.insert_one(model_json)
+    inserted_id = result.inserted_id
     print("Model JSON created and inserted into MongoDB collection 'model_json'.")
-    return model_json
+    return inserted_id,model_json
 
 
 def generate_objects_json(model_json):
@@ -331,7 +332,6 @@ def generate_objects_json(model_json):
         Particulates.calc_volume_json(i)
         # print(f"Density of {i.Pname}: {i.Pdensity_kg_m3} kg_m3")
     ##Heteroaggregated microplastics (heterMP)
-## 检查到这里了 明天继续 😄
     MP_heteroaggregatedParticles_json = []
     for i in MP_freeParticles_json:
         MP_single_heterParticle_json = ParticulatesSPM.create_pspm_json(parentSPM_json = spm_dict, parentMP_json = i)
