@@ -71,7 +71,11 @@ def process_flows_json(compartment, size_fraction, mp_form, flow_type, flows_dic
         (df_comp["MP_form"] == mp_form) & (df_comp["MP_size"] == size_fraction)
     ]
     df_cleaned = df_filtered.drop(["MP_size", "MP_form"], axis=1)
-    return {col: sum_column_values(df_cleaned[col]) for col in df_cleaned.columns}
+    columns_to_sum = [
+        col for col in df_cleaned.columns
+        if col not in ('index', 'MP_form', 'MP_size')]
+    # return {col: sum_column_values(df_cleaned[col]) for col in df_cleaned.columns}
+    return {col: sum_column_values(df_cleaned[col]) for col in columns_to_sum}
 
 
 def process_flows_comp(compartment, flow_type, flows_dict):
@@ -107,6 +111,7 @@ def process_flows_comp_json(compartment, flow_type, flows_dict):
         "k_biofouling",
         "k_defouling",
         "k_fragmentation",
+        "index" # newly added
     ]
 
     return {

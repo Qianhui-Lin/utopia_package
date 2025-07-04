@@ -9,6 +9,8 @@ from utopia.preprocessing.fill_interactions_dictionaries import *
 from utopia.results_processing.exposure_indicators_calculation import *
 from utopia.solver_steady_state import *
 from utopia.results_processing.emission_fractions_calculation import *
+from utopia.results_processing_json.exposure_indicators_calculation_json import *
+
 import re
 
 # from utopia.results_processing.pdf_reporting import *
@@ -786,6 +788,15 @@ def plot_compartment_distribution_json(
         plt.show()
 
         return fig
+# 到这里了 Exposure_indicators_calculation_json 还没改 🍚
+def estimate_exposure_indicators_json(model_json,flow,result):
+        """Estimate overall size dependent exposure indicators"""
+        (
+            result["Overall_exposure_indicators"],
+            result["size_fraction_indicators"],
+        ) = Exposure_indicators_calculation_json(model_json,flow,result)
+
+        # return result["Overall_exposure_indicators"],result["size_fraction_indicators"]
 
 class ResultsProcessor:
     """Provides functionalities for restructuring, analysing and plotting the UTOPIA model results."""
