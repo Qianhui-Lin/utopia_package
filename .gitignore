@@ -140,3 +140,4 @@ dmypy.json
 
 # MacOS
 .DS_Storedocs/model_tutorial.ipynb
+.DS_Store
