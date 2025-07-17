@@ -1,0 +1,26 @@
+# Ignore Python cache and virtualenvs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+.env.*
+.venv/
+venv/
+build/
+dist/
+.eggs/
+*.egg-info/
+
+# Ignore git and test files
+.git
+.gitignore
+*.log
+
+# Ignore OS files
+.DS_Store
+
+# Ignore notebooks, if any
+*.ipynb
+
+

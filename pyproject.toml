@@ -5,6 +5,9 @@ description = "package to run the UTOPIA unit world model to estimate mass and p
 authors = ["Prado Domercq"]
 license = "MIT"
 readme = "README.md"
+packages = [
+    { include = "utopia", from = "src" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.9"

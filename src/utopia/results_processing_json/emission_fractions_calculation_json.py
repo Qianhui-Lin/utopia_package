@@ -7,6 +7,16 @@ from utopia.results_processing_json.process_results_json import *
 # from results_processing.process_results import ResultsProcessor
 import matplotlib.pyplot as plt
 
+# MongoDB settings - using environment variables
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+
+ #use this when mongodb runnning in container
+
+DB_NAME = os.getenv("DB_NAME", "utopia")
+CONFIG_COLLECTION = "configure_data"
+INPUT_COLLECTION = "input_data"
+MODEL_COLLECTION = "model_json"
+
 dispersing_comp_list = ["Air", "Ocean_Mixed_Water", "Ocean_Surface_Water"]
 
 

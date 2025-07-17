@@ -9,37 +9,37 @@ from utopia.globalConstants import *
 from utopia.microservice.generate_object.box_class_json import *
 from utopia.microservice.generate_object.particulate_classes_json import *
 from utopia.microservice.generate_object.compartment_classes_json import *
-from utopia.preprocessing.readinputs_from_csv_json import *
+from utopia.microservice.generate_object.readinputs_from_csv_json import *
 import json
 import copy
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from bson import ObjectId
+import os
+app = FastAPI()
 
 
-# MongoDB settings (could use env vars for production)
-MONGO_URI = "mongodb://localhost:27017/"
-DB_NAME = "utopia"
+# MongoDB settings - using environment variables
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+
+ #use this when mongodb runnning in container
+
+DB_NAME = os.getenv("DB_NAME", "utopia")
 CONFIG_COLLECTION = "configure_data"
 INPUT_COLLECTION = "input_data"
+MODEL_COLLECTION = "model_json"
 
 
-def mongo_connect():
-    client = pymongo.MongoClient(MONGO_URI)
-    db = client[DB_NAME]
-    config_collection = db[CONFIG_COLLECTION]
-    input_collection = db[INPUT_COLLECTION]
+client = pymongo.MongoClient(MONGO_URI)
+db = client[DB_NAME]
+config_collection = db[CONFIG_COLLECTION]
+input_collection = db[INPUT_COLLECTION]
+model_json_collection = db[MODEL_COLLECTION]
 
-    config_doc = config_collection.find_one()
-    config_doc_id = config_doc['_id'] if config_doc is not None else None
+class UserInput(BaseModel):
+    config_doc_id: str
+    input_doc_id: str
 
-    input_doc = input_collection.find_one()
-    input_doc_id = input_doc['_id'] if input_doc is not None else None
-
-    return client, db, config_collection, input_collection, config_doc, input_doc, config_doc_id, input_doc_id
-
-
-def initialize_mongo_collections():
-    client, db, config_collection, input_collection, _, _, _, _ = mongo_connect()
-    config_collection.delete_many({})
-    input_collection.delete_many({})
 
 def load_csv_column(filename, column_name):
     """Load a column from input CSV file: Reads a single column from a CSV file and returns it as a list"""
@@ -49,28 +49,8 @@ def load_csv_column(filename, column_name):
     df = pd.read_csv(file_path, usecols=[column_name])
     return df[column_name].tolist()
 
-def add_derived_parameters():
-    client, db, config_collection, input_collection, config_doc, input_doc, config_doc_id, input_doc_id = mongo_connect()
 
-    vol_algal_cell_m3 = config_doc['vol_algal_cell_m3']
-    radius_algae_m = ((3.0 / 4.0) * (vol_algal_cell_m3 / math.pi)) ** (1.0 / 3.0)
-    spm_radius_um = radius_algae_m * 1e6
-    compartments_list = load_csv_column(
-            config_doc["comp_input_file_name"], "Cname"
-        )
-    base_path = Path(__file__).resolve().parent.parent.parent / "data"
-    update_config = config_collection.update_one(
-        {'_id': config_doc_id},
-        {'$set': {
-            'radius_algae_m': radius_algae_m,
-            'spm_radius_um': spm_radius_um,
-            'compartments_list': compartments_list,
-            'base_path': str(base_path)
-        }}
-    )
-
-def generate_particles_dataframe_json():
-        client, db, config_collection, input_collection, config_doc, input_doc, config_doc_id, input_doc_id = mongo_connect()
+def generate_particles_dataframe_json(input_doc, config_doc):
 
         """Generates the microplastics input DataFrame from Utopia model attributes."""
         MPdensity_kg_m3 = input_doc['MPdensity_kg_m3']
@@ -111,11 +91,8 @@ def generate_particles_dataframe_json():
             )
         '''
           
-def generate_coding_dictionaries_json():
-    client, db, *_, = mongo_connect()
-    model_json_collection = db["model_json"]
-    model_json_doc = model_json_collection.find_one()
-    model_json_doc_id = model_json_doc['_id']
+def generate_coding_dictionaries_json(model_id):
+    model_json_doc = model_json_collection.find_one({'_id':model_id})
     """Generates Mp form, size and compartment coding dictionaries as attributes."""
     if model_json_doc["particles_df"] is None:
         raise ValueError("Particles DataFrame has not been generated.")
@@ -149,7 +126,7 @@ def generate_coding_dictionaries_json():
         }
     
     update_model_json = model_json_collection.update_one(
-        {'_id': model_json_doc_id},
+        {'_id': model_id},
         {'$set': {
             'dict_size_coding': dict_size_coding,
             'size_dict': size_dict,
@@ -160,8 +137,8 @@ def generate_coding_dictionaries_json():
         }}
     )
 
-def create_model_json():
-    client, db, config_collection, input_collection, config_doc, input_doc, config_doc_id, input_doc_id = mongo_connect()
+def create_model_json(input_doc, config_doc):
+
     model_json = {}
     # Loads required parameters from config and data dictionaries.
 
@@ -210,7 +187,7 @@ def create_model_json():
     # Emission scenario
     model_json["emiss_dict_g_s"] = input_doc["emiss_dict_g_s"]
 
-    model_json["particles_df"] = generate_particles_dataframe_json()
+    model_json["particles_df"] = generate_particles_dataframe_json(input_doc = input_doc, config_doc= config_doc)
 
     # Add base path
     base_path = Path(__file__).resolve().parent.parent.parent / "data"
@@ -219,8 +196,7 @@ def create_model_json():
 
 
     # Insert model_json into MongoDB collection "model_json" in the "utopia" database
-    model_json_collection = db["model_json"]
-    # model_json_collection.delete_many({})  #可选 清空以前的值
+
     result = model_json_collection.insert_one(model_json)
     inserted_id = result.inserted_id
     print("Model JSON created and inserted into MongoDB collection 'model_json'.")
@@ -456,9 +432,9 @@ def generate_objects_json(model_json):
     # Generate list of species names and add code name to object
     SpeciesList = generate_system_species_list_json(system_particle_json_list = system_particle_object_list_json,MPforms_list = model_json["MPforms_list"], compartmentNames_list = compartmentNames_list, boxNames_list = boxNames_list)
 
-    print("modleBoxes: ", modelBoxes)
-    print("type of modelBoxes: ", type(modelBoxes))
-    print("UTOPIA_dict_: ", UTOPIA)
+    #print("modleBoxes: ", modelBoxes)
+    #print("type of modelBoxes: ", type(modelBoxes))
+    #print("UTOPIA_dict_: ", UTOPIA)
     particles_properties_df_dict = particles_properties_df.to_dict(orient="records")
 
     # DataFrames cannot be directly inserted into MongoDB.
@@ -472,4 +448,43 @@ def generate_objects_json(model_json):
     )
 
 
+@app.post("/generate_object")
+def generate_object(user_input: UserInput):
+    try:
+        config_doc_id = ObjectId(user_input.config_doc_id)
+        input_doc_id = ObjectId(user_input.input_doc_id)
+        
+        config_doc = config_collection.find_one({'_id':config_doc_id})
+        input_doc = input_collection.find_one({'_id':input_doc_id})
+        model_id,model_json = create_model_json(input_doc = input_doc, config_doc = config_doc)
+        generate_coding_dictionaries_json(model_id)
+        (
+        system_particle_object_list_json,
+        SpeciesList,
+        spm_dict,
+        dict_comp,
+        particles_properties_df_dict
+        ) = generate_objects_json(model_json)
+        model_json_collection.find_one_and_update(
+	        {"_id": model_id}, 
+	        {
+                "$set": {
+                    "system_particle_object_list": system_particle_object_list_json,
+                    "SpeciesList": SpeciesList,
+                    "spm": spm_dict,
+                    "dict_comp": dict_comp,
+                    "particles_properties_df": particles_properties_df_dict
+                }
+	        },
+	        upsert=True
+        )
+        return {"status": "success", "model_id": str(model_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/init_model_collections")
+def initialize():
+    # Caution: This will delete all existing documents!
+    model_json_collection.delete_many({})
+    return {"status": "model collection initialized"}
 ###CONTINUE HERE### 

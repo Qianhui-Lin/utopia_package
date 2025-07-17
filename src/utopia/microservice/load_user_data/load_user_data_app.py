@@ -7,11 +7,15 @@ import os
 
 app = FastAPI()
 
-# MongoDB settings (could use env vars for production)
-MONGO_URI = "mongodb://localhost:27017/"
-DB_NAME = "utopia"
+# MongoDB settings - using environment variables
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+#MONGO_URI = "mongodb://utopiauser:utopiapassword@mongodb:27017/utopia?authSource=admin"
+ #use this when mongodb runnning in container #use this when mongodb runnning in container
+
+DB_NAME = os.getenv("DB_NAME", "utopia")
 CONFIG_COLLECTION = "configure_data"
 INPUT_COLLECTION = "input_data"
+MODEL_COLLECTION = "model_json"
 
 client = pymongo.MongoClient(MONGO_URI)
 db = client[DB_NAME]
@@ -25,7 +29,7 @@ class DataInput(BaseModel):
 def submit_input(data: DataInput):
     try:
         inserted = input_collection.insert_one(data.data)
-        return {"status": "success", "inserted_id": str(inserted.inserted_id)}
+        return {"status": "success", "input_id": str(inserted.inserted_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -33,7 +37,7 @@ def submit_input(data: DataInput):
 def submit_config(data: DataInput):
     try:
         inserted = config_collection.insert_one(data.data)
-        return {"status": "success", "inserted_id": str(inserted.inserted_id)}
+        return {"status": "success", "config_id": str(inserted.inserted_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

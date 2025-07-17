@@ -1,0 +1,46 @@
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: utopia-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD} 
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  generate-object:
+    build:
+      context: .
+      dockerfile: src/utopia/microservice/generate_object/Dockerfile
+    env_file:
+      - .env
+    container_name: generate-object-service
+    # Other service settings...
+    depends_on:
+      - mongodb
+    ports:
+      - "8002:8002"
+    # Development only: mount local code so you can edit and auto-reload
+    volumes:
+      - ./src:/app/src
+  load-user-data:
+    build:
+      context: .
+      dockerfile: src/utopia/microservice/load_user_data/Dockerfile
+    env_file:
+      - .env
+    container_name: load-user-data-service
+    # Other service settings...
+    depends_on:
+      - mongodb
+    ports:
+      - "8001:8001"
+     # Development only: mount local code so you can edit and auto-reload
+    volumes:
+      - ./src:/app/src
+volumes:
+  mongo_data:
