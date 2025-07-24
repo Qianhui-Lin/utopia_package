@@ -40,6 +40,11 @@ class UserInput(BaseModel):
     config_doc_id: str
     input_doc_id: str
 
+class ParticulateData(BaseModel):
+    particle_json: dict
+    concMass_mg_L: float
+    concNum_part_L: float
+
 
 def load_csv_column(filename, column_name):
     """Load a column from input CSV file: Reads a single column from a CSV file and returns it as a list"""
@@ -487,4 +492,18 @@ def initialize():
     # Caution: This will delete all existing documents!
     model_json_collection.delete_many({})
     return {"status": "model collection initialized"}
+
+@app.post("/calc_numConc_json")
+async def calc_numConc(particulate_data : ParticulateData):
+    try: 
+        particle_json = particulate_data.particle_json
+        concMass_mg_L = particulate_data.concMass_mg_L
+        concNum_part_L = particulate_data.concNum_part_L
+        Particulates.calc_numConc_json(particle_json = particle_json, concMass_mg_L = concMass_mg_L,concNum_part_L = concNum_part_L )
+
+        return {"concNum_part_m3":particle_json["concNum_part_m3"],"message":"calculated concNum_part_m3"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    
 ###CONTINUE HERE### 
