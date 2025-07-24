@@ -2,6 +2,7 @@ import math
 import pandas as pd
 import os
 import numpy as np
+import requests
 from utopia.globalConstants import *
 from utopia.helpers import generate_fsd_matrix
 from utopia.microservice.generate_object.particulate_classes_json import *
@@ -377,9 +378,17 @@ def heteroaggregation(particle, model_json):
         k_hetAgg = 0
     # 💡 model_json 里的spm更新了
     else:
-        Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL,concNum_part_L=0)
+        particulate_data = {
+            "particle_json": model_json["spm"],
+            "concMass_mg_L": SPM_mgL,
+            "concNum_part_L": 0
+
+        } 
+        response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
+        # Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL,concNum_part_L=0)
         
-        SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
+        # SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
+        SPM_concNum_part_m3 = response.json()["concNum_part_m3"]
         k_hetAgg = float(alpha) * k_coll * SPM_concNum_part_m3
     # the pseudo first-order heteroaggregation rate constant
 
@@ -457,18 +466,39 @@ def heteroaggregate_breackup(particle, model_json):
     if particle["Pform"] == "heterMP":
 
         alpha = alpha_heter["freeMP"]
-        Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL, concNum_part_L=0)
-        
-        SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
+
+        particulate_data = {
+            "particle_json": model_json["spm"],
+            "concMass_mg_L": SPM_mgL,
+            "concNum_part_L": 0
+
+        } 
+
+        response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
+        #Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL, concNum_part_L=0)
+        SPM_concNum_part_m3 = response.json()["concNum_part_m3"]
+        # SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
         k_hetAgg = float(alpha) * k_coll * SPM_concNum_part_m3
         # the pseudo first-order heteroaggregation rate constant
 
         k_aggBreakup = (1 / 1000000000) * k_hetAgg
     elif particle["Pform"] == "heterBiofMP":
         alpha = alpha_heter["biofMP"]
-        Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL, concNum_part_L=0)
+
+        particulate_data = {
+            "particle_json": model_json["spm"],
+            "concMass_mg_L": SPM_mgL,
+            "concNum_part_L": 0
+
+        } 
+
+        #Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL, concNum_part_L=0)
+
+        response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
         
-        SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
+        #SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
+
+        SPM_concNum_part_m3 = response.json()["concNum_part_m3"]
 
         k_hetAgg = float(alpha) * k_coll * SPM_concNum_part_m3
         # the pseudo first-order heteroaggregation rate constant
