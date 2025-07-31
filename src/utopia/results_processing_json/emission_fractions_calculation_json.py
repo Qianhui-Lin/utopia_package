@@ -306,7 +306,7 @@ def plot_emission_fractions(emission_fractions_data, emiss_comp):
 
 def estimate_emission_fractions_json(model_json):
     from utopia.results_processing.process_results import ResultsProcessor
-    client = pymongo.MongoClient("mongodb://localhost:27017/")
+    client = pymongo.MongoClient(MONGO_URI)
     db = client['utopia']
 
     """Estimate emission fractions"""

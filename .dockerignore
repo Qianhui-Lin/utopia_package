@@ -1,5 +1,6 @@
 # Ignore Python cache and virtualenvs
 __pycache__/
+__pycache__
 *.pyc
 *.pyo
 *.pyd
@@ -24,3 +25,6 @@ dist/
 *.ipynb
 
 
+docker-compose.yml
+
+docs/

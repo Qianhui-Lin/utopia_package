@@ -27,6 +27,10 @@ services:
     # Development only: mount local code so you can edit and auto-reload
     volumes:
       - ./src:/app/src
+    command: 
+      uvicorn utopia.microservice.generate_object.generate_object_app_new:app --host 0.0.0.0 --port 8002 --reload
+
+  
   load-user-data:
     build:
       context: .
@@ -42,5 +46,44 @@ services:
      # Development only: mount local code so you can edit and auto-reload
     volumes:
       - ./src:/app/src
+    command: 
+      uvicorn utopia.microservice.load_user_data.load_user_data_app:app --host 0.0.0.0 --port 8001 --reload
+    
+  generate-rate-constant:
+    build:
+      context: .
+      dockerfile: src/utopia/microservice/generate_rate_constant/Dockerfile
+    env_file:
+      - .env
+    container_name: generate-rate-constant-service
+    depends_on:
+      - mongodb
+      - generate-object
+    ports:
+      - "8003:8003"
+    # Development only: mount local code so you can edit and auto-reload
+    volumes:
+      - ./src:/app/src
+    command:
+      uvicorn utopia.microservice.generate_rate_constant.generate_rate_constant_app:app --host 0.0.0.0 --port 8003 --reload
+
+  plot-rate-constant:
+    build:
+      context: .
+      dockerfile: src/utopia/microservice/plot_rate_constant/Dockerfile
+    env_file:
+      - .env
+    container_name: plot-rate-constant-service
+    depends_on:
+      - mongodb
+      - generate-rate-constant
+    ports:
+      - "8004:8004"
+    # Development only: mount local code so you can edit and auto-reload
+    volumes:
+      - ./src:/app/src
+    command:
+      uvicorn utopia.microservice.plot_rate_constant.plot_rate_constant_app:app --host 0.0.0.0 --port 8004 --reload
+    
 volumes:
   mongo_data:

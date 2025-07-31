@@ -384,7 +384,9 @@ def heteroaggregation(particle, model_json):
             "concNum_part_L": 0
 
         } 
-        response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
+        response = requests.post("http://generate-object:8002/calc_numConc_json", json=particulate_data)
+
+        #response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
         # Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL,concNum_part_L=0)
         
         # SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
@@ -473,8 +475,9 @@ def heteroaggregate_breackup(particle, model_json):
             "concNum_part_L": 0
 
         } 
+        response = requests.post("http://generate-object:8002/calc_numConc_json", json=particulate_data)
 
-        response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
+        #response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
         #Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL, concNum_part_L=0)
         SPM_concNum_part_m3 = response.json()["concNum_part_m3"]
         # SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
@@ -493,8 +496,9 @@ def heteroaggregate_breackup(particle, model_json):
         } 
 
         #Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL, concNum_part_L=0)
+        response = requests.post("http://generate-object:8002/calc_numConc_json", json=particulate_data)
 
-        response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
+        #response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
         
         #SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
 

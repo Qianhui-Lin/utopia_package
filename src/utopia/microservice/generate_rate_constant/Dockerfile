@@ -26,10 +26,12 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy the rest of your code
 #COPY . .
 
+
 # Set Pythonpath for src layout
 ENV PYTHONPATH=/app/src
 
-EXPOSE 8001
+EXPOSE 8003
+
 
 # Set the default command 
-CMD ["uvicorn", "utopia.microservice.load_user_data.load_user_data_app:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "utopia.microservice.generate_rate_constant.generate_rate_constant_app:app", "--host", "0.0.0.0", "--port", "8003"]

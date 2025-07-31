@@ -9,7 +9,7 @@ app = FastAPI()
 
 # MongoDB settings - using environment variables
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-#MONGO_URI = "mongodb://utopiauser:utopiapassword@mongodb:27017/utopia?authSource=admin"
+
  #use this when mongodb runnning in container #use this when mongodb runnning in container
 
 DB_NAME = os.getenv("DB_NAME", "utopia")
