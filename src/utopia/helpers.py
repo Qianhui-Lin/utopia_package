@@ -119,3 +119,14 @@ def process_flows_comp_json(compartment, flow_type, flows_dict):
         for col in df_cleaned.columns
         if col not in excluded_columns
     }
+
+def get_compartment_for_particle(particle, dict_comp):
+    """
+    Returns the compartment dictionary from dict_comp corresponding to the particle's Pcompartment_Cname.
+    """
+    cname = particle.get("Pcompartment_Cname")
+    if cname is None:
+        raise ValueError("Particle does not have 'Pcompartment_Cname'")
+    if cname not in dict_comp:
+        raise ValueError(f"Compartment name '{cname}' not found in dict_comp")
+    return dict_comp[cname]
