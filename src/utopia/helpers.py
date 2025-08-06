@@ -130,3 +130,15 @@ def get_compartment_for_particle(particle, dict_comp):
     if cname not in dict_comp:
         raise ValueError(f"Compartment name '{cname}' not found in dict_comp")
     return dict_comp[cname]
+
+def get_compartment_for_particle_model(particle, model_json):
+    """
+    Returns the compartment dictionary from dict_comp corresponding to the particle's Pcompartment_Cname.
+    """
+    dict_comp = model_json ["dict_comp"]
+    Cname = particle.get("Pcompartment_Cname")
+    if Cname is None:
+        raise KeyError("Particle does not have 'Pcompartment_Cname'")
+    if Cname not in dict_comp:
+        raise KeyError(f"Compartment name '{Cname}' not found in dict_comp")
+    return dict_comp[Cname]
