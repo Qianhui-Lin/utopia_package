@@ -142,3 +142,14 @@ def get_compartment_for_particle_model(particle, model_json):
     if Cname not in dict_comp:
         raise KeyError(f"Compartment name '{Cname}' not found in dict_comp")
     return dict_comp[Cname]
+
+def get_compartment_for_particle_from_rate_constant_collection(particle_rate_constant_collection,particle_system_particle, dict_comp):
+    """
+    Returns the compartment dictionary from dict_comp corresponding to the particle's Pcompartment_Cname.
+    """
+    cname = particle_system_particle.get("Pcompartment_Cname")
+    if cname is None:
+        raise ValueError("Particle does not have 'Pcompartment_Cname'")
+    if cname not in dict_comp:
+        raise ValueError(f"Compartment name '{cname}' not found in dict_comp")
+    return dict_comp[cname]
