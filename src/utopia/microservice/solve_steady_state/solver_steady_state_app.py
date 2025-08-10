@@ -21,6 +21,8 @@ MODEL_COLLECTION = "model_json"
 INTERACTION_MATRIX_COLLECTION = "interaction"
 RESULT_COLLECTION = "result"
 FLOW_COLLECTION = "flow"
+RATE_CONSTANT_COLLECTION = "rate_constant"
+PARTICLE_STATE_COLLECTION = "particle_state"
 
 client = pymongo.MongoClient(MONGO_URI)
 db = client[DB_NAME]
@@ -28,6 +30,8 @@ model_json_collection = db[MODEL_COLLECTION]
 interaction_collection = db[INTERACTION_MATRIX_COLLECTION]
 result_collection = db[RESULT_COLLECTION]
 flow_collection = db[FLOW_COLLECTION]
+rate_constant_collection = db[RATE_CONSTANT_COLLECTION]
+particle_state_collection = db[PARTICLE_STATE_COLLECTION]
 
 class ModelRequest(BaseModel):
     model_id: str
@@ -37,8 +41,9 @@ class ModelResponse(BaseModel):
     model_id: str
     result_id :str
     flow_id: str
-    #interaction_matrix_id: str
-    status: str = "result,flow generated and saved to mongodb"
+    particle_state_id: str
+    status: str = "result, flow, and particle states generated and saved to mongodb"
+
 
 def solver_SS_json_app(model_json,interaction_documentation):
 
@@ -68,14 +73,14 @@ def solver_SS_json_app(model_json,interaction_documentation):
 
     input_flows_num_s = dict(zip(sp_imputs, q_num_s))
 
-    R, PartMass_t0 = solve_ODES_SS_app(
+    R, PartMass_t0,system_particle_object_list_updated = solve_ODES_SS_app(
         system_particle_object_list=model_json["system_particle_object_list"],
         q_num_s=0,
         input_flows_g_s=input_flows_g_s,
         interactions_df=interaction_documentation["interaction_df"],
         model_json = model_json,
     )
-    return R, PartMass_t0, input_flows_g_s, input_flows_num_s, model_json
+    return R, PartMass_t0, input_flows_g_s, input_flows_num_s, system_particle_object_list_updated
 
 
 def solve_ODES_SS_app(
@@ -218,7 +223,7 @@ def solve_ODES_SS_app(
     else:
         print("ERROR: No particles have been input to the system")
 
-    return R, PartMass_t0
+    return R, PartMass_t0, system_particle_object_list
 
 @app.get("/")
 def root():
@@ -248,22 +253,53 @@ def init_flow_collection():
     except Exception as e:
         print("ERROR OCCURRED:", str(e))
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    
+@app.post("/init_particle_state_collection")
+def init_particle_state_collection():
+    try:
+        result = particle_state_collection.delete_many({})
+        return {
+            "status": "success",
+            "message": f"All {result.deleted_count} particle state records have been deleted."
+        }
+    except Exception as e:
+        print("ERROR OCCURRED:", str(e))
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 
 @app.post("/solve_steady_state",response_model = ModelResponse)
 def solve_steady_state(request: ModelRequest):
     try:
         model_json = model_json_collection.find_one({'_id': ObjectId(request.model_id)}) 
         interaction_documentation = interaction_collection.find_one({'_id':ObjectId(request.interaction_matrix_id)})
-        (R, PartMass_t0, input_flows_g_s, input_flows_num_s,model_json_updated_2) = solver_SS_json_app(model_json,interaction_documentation)
+        (R, PartMass_t0, input_flows_g_s, input_flows_num_s,system_particle_object_list_updated) = solver_SS_json_app(model_json,interaction_documentation)
         for i, idx in zip(R["mass_g"], R.index):
             if i < 0:
                 print("negative values in the solution for " + idx)
             else:
                 pass
-        model_json_collection.update_one(
-            {'_id': ObjectId(request.model_id)},     
-            {'$set': model_json_updated_2}    
-        )
+
+        system_particle_state_list = []
+        for p in system_particle_object_list_updated:
+            particle_state = {
+                'Pcode': p['Pcode'],
+                'Pmass_g_t0': p['Pmass_g_t0'],
+                'Pmass_g_SS': p['Pmass_g_SS'],
+                'Pnum_SS': p['Pnum_SS'],
+                'C_g_m3_SS': p['C_g_m3_SS'],
+                'C_num_m3_SS': p['C_num_m3_SS']
+            }
+            system_particle_state_list.append(particle_state)
+
+        particle_state_doc = {
+            'model_id': request.model_id,
+            'interaction_matrix_id': request.interaction_matrix_id,
+            'system_particle_state_list': system_particle_state_list,
+            
+        }
+
+        particle_state_insert = particle_state_collection.insert_one(particle_state_doc)
+
         result_insert = result_collection.insert_one({
             'model_id': request.model_id,
             'result': R.to_dict('list'),
@@ -280,7 +316,8 @@ def solve_steady_state(request: ModelRequest):
         return ModelResponse(
             model_id = request.model_id,
             result_id = str(result_insert.inserted_id),
-            flow_id = str(flow_insert.inserted_id)
+            flow_id = str(flow_insert.inserted_id),
+            particle_state_id=str(particle_state_insert.inserted_id)
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

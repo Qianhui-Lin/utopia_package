@@ -3,7 +3,7 @@
 
 import numpy as np
 import pandas as pd
-from utopia.helpers import get_compartment_for_particle
+from utopia.helpers import get_compartment_for_particle, get_compartment_for_particle_from_rate_constant_collection
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
@@ -15,18 +15,21 @@ app = FastAPI(title="Interaction Matrix Generator Service", version="1.0.0")
 
 # MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 # testing locally
-MONGO_URI = "mongodb://utopiauser:utopiapassword@localhost:27017/utopia?authSource=admin"
+MONGO_URI = "mongodb://utopiauser:utopiapassword@localhost:27018/utopia?authSource=admin"
 DB_NAME = os.getenv("DB_NAME", "utopia")
 MODEL_COLLECTION = "model_json"
 INTERACTION_MATRIX_COLLECTION = "interaction"
+RATE_CONSTANT_COLLECTION = "rate_constant"
 
 client = pymongo.MongoClient(MONGO_URI)
 db = client[DB_NAME]
 model_json_collection = db[MODEL_COLLECTION]
 interaction_collection = db[INTERACTION_MATRIX_COLLECTION]
+rate_constant_collection = db[RATE_CONSTANT_COLLECTION]
 
 class ModelRequest(BaseModel):
     model_id: str
+    rate_constant_id: str
 
 class ModelResponse(BaseModel):
     model_id: str
@@ -34,18 +37,23 @@ class ModelResponse(BaseModel):
     status: str = "interaction matrix generated and saved to mongodb"
 
 
-def fillInteractions_fun_OOP_json(model_id):
+def fillInteractions_fun_OOP_json(model_id,rate_constant_id):
     model_id = ObjectId(model_id)
+    rate_constant_id = ObjectId(rate_constant_id)
     model_json = model_json_collection.find_one({'_id': model_id})
+    rate_constant = rate_constant_collection.find_one({'_id': rate_constant_id})
     if not model_json:
         raise ValueError("Model ID not found in the database")
+    if not rate_constant:
+        raise ValueError("Rate Constant ID not found in the database")
     system_particle_object_list = model_json["system_particle_object_list"]
+    system_particle_rate_constant_list = rate_constant["system_particle_rate_constant_list"]
     SpeciesList = model_json["SpeciesList"]
     dict_comp = model_json["dict_comp"]
     surfComp_list = [c for c in dict_comp if "Surface" in c]
 
     # Asign loose rates
-    elimination_rates = eliminationProcesses(system_particle_object_list, SpeciesList)
+    elimination_rates = eliminationProcesses(system_particle_rate_constant_list, SpeciesList)
 
     interactions_df = pd.DataFrame(
         np.diag(elimination_rates), index=SpeciesList, columns=SpeciesList
@@ -57,7 +65,7 @@ def fillInteractions_fun_OOP_json(model_id):
     for sp1 in system_particle_object_list:
         interactions_df_rows.append(
             interactionProcess(
-                sp1, interactions_df, system_particle_object_list, surfComp_list, dict_comp
+                sp1, interactions_df, system_particle_object_list, system_particle_rate_constant_list, surfComp_list, dict_comp
             )
         )
 
@@ -66,12 +74,12 @@ def fillInteractions_fun_OOP_json(model_id):
         interactions_df_rows
     )  # vstack it was set as column stack and was wrong!!
     interactions_df_sol = pd.DataFrame(array, index=SpeciesList, columns=SpeciesList)
-    interaction_matrix = interactions_df_sol.to_dict()
+    interaction_matrix = interactions_df_sol.transpose().to_dict()
 
     return interaction_matrix
 
 
-def eliminationProcesses(system_particle_object_list, SpeciesList):
+def eliminationProcesses(system_particle_rate_constant_list, SpeciesList):
     # Estimate losses (diagonal):the diagonal of the dataframe corresponds to the losses of each species
     # Add soil_convection as elimination process from deep soil compartments
 
@@ -79,7 +87,7 @@ def eliminationProcesses(system_particle_object_list, SpeciesList):
 
     diag_list = []
 
-    for sp in system_particle_object_list:
+    for sp in system_particle_rate_constant_list:
         dict_sp = sp["RateConstants"]
 
         # replace none values
@@ -115,9 +123,9 @@ def eliminationProcesses(system_particle_object_list, SpeciesList):
     return diag_list
 
 
-def inboxProcess(sp1, sp2, surfComp_list, dict_comp):
+def inboxProcess(sp1, sp2, sp2_system_particle, surfComp_list, dict_comp):
     comp_sp1 = get_compartment_for_particle(sp1, dict_comp)
-    comp_sp2 = get_compartment_for_particle(sp2, dict_comp)
+    comp_sp2 = get_compartment_for_particle_from_rate_constant_collection(sp2, sp2_system_particle, dict_comp)
     Pcompartment_processess_sp2 = comp_sp2["processess"]
     Pcompartment_connexions_sp2 = comp_sp2["connexions"]
 
@@ -257,10 +265,11 @@ def inboxProcess(sp1, sp2, surfComp_list, dict_comp):
 
 
 def interactionProcess(
-    sp1, interactions_df, system_particle_object_list, surfComp_list,dict_comp
+    sp1, interactions_df, system_particle_object_list, system_particle_rate_constant_list, surfComp_list,dict_comp
 ):
     sol = []
-    for sp2 in system_particle_object_list:
+    for sp2 in system_particle_rate_constant_list:
+        sp2_system_particle = next((sp for sp in system_particle_object_list if sp2["Pcode"] == sp["Pcode"]), None)
         # Same particle in the same box and compartment (losses)
         if sp1["Pcode"] == sp2["Pcode"]:
             sol.append(interactions_df[sp2["Pcode"]][sp1["Pcode"]])
@@ -270,7 +279,7 @@ def interactionProcess(
             # Same box (i.e. river section RS)--> In box processes
 
             if sp1["Pcode"].split("_")[1] == sp2["Pcode"].split("_")[1]:
-                sol.append(inboxProcess(sp1, sp2, surfComp_list,dict_comp))
+                sol.append(inboxProcess(sp1, sp2, sp2_system_particle,surfComp_list,dict_comp))
 
             # Different Box but same particle in same compartment (Full Multi version where more than 1 box (i.e. river sections)) -->Transport (advection or sediment transport determined by flow_connectivity file)
 
@@ -321,7 +330,7 @@ def init_interaction_matrix_collection():
 @app.post("/generate_interaction_matrix",response_model = ModelResponse)
 def generate_interaction_matrix(request: ModelRequest):
     try:
-        interaction_matrix = fillInteractions_fun_OOP_json(request.model_id)
+        interaction_matrix = fillInteractions_fun_OOP_json(request.model_id,request.rate_constant_id)
         result = interaction_collection.insert_one({
             "model_id": request.model_id,
             "interaction_df": interaction_matrix
