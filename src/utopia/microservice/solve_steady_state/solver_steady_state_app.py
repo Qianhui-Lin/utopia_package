@@ -13,9 +13,9 @@ from bson import ObjectId
 
 app = FastAPI(title="Steady State Solver Service", version="1.0.0")
 
-# MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 # testing locally
-MONGO_URI = "mongodb://utopiauser:utopiapassword@localhost:27018/utopia?authSource=admin"
+#MONGO_URI = "mongodb://utopiauser:utopiapassword@localhost:27018/utopia?authSource=admin"
 DB_NAME = os.getenv("DB_NAME", "utopia")
 MODEL_COLLECTION = "model_json"
 INTERACTION_MATRIX_COLLECTION = "interaction"
