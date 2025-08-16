@@ -36,4 +36,4 @@ EXPOSE 8003
 # Set the default command 
 CMD ["uvicorn", "utopia.microservice.generate_rate_constant.generate_rate_constant_app:app", "--host", "0.0.0.0", "--port", "8003"]
 
-#testing for ci_1
+#testing for ci_2
