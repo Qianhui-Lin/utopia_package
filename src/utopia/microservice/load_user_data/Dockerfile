@@ -33,3 +33,5 @@ EXPOSE 8001
 
 # Set the default command 
 CMD ["uvicorn", "utopia.microservice.load_user_data.load_user_data_app:app", "--host", "0.0.0.0", "--port", "8001"]
+
+#testing for ci
