@@ -42,7 +42,7 @@ jobs:
         id: set-matrix
         env:
           CHANGED_FILES: ${{ steps.changes.outputs.all_changed_files }}
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          # DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         shell: bash
         run: |
             python3 - <<'PY'
@@ -50,30 +50,18 @@ jobs:
 
             changed = os.environ.get("CHANGED_FILES", "").split()
             root = pathlib.Path("src/utopia/microservice")
-            username = (os.environ.get("DOCKERHUB_USERNAME") or "").lower()
+          
 
             services = []
             for dockerfile in root.glob("*/Dockerfile"):
                 service_dir = dockerfile.parent.as_posix()
                 name = dockerfile.parent.name
-                changed_here = any(
-                    f.startswith(service_dir + "/") or f == f"{service_dir}/Dockerfile"
-                    for f in changed
-                )
-                if not changed_here:
-                    continue
-                image = f"{username}/{name.replace('_','-').lower()}"
-                services.append({
-                    "name": name,
-                    "context": service_dir,
-                    "dockerfile": f"{service_dir}/Dockerfile",
-                    "image": image
-                })
-
-            matrix = {"include": services}
+                if any(f.startswith(service_dir + "/") or f == f"{service_dir}/Dockerfile" for f in changed):
+                  services.append({"name": name, "context": service_dir, "dockerfile": f"{service_dir}/Dockerfile"})
+            matrix={"include":services}
             with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-                fh.write(f"matrix={json.dumps(matrix)}\n")
-                fh.write(f"count={len(services)}\n")
+              fh.write(f"matrix={json.dumps(matrix)}\n")
+              fh.write(f"count={len(services)}\n")
             PY
 
   build-and-push:
@@ -108,11 +96,16 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Compute image name
+        run: |
+          IMAGE="docker.io/${{ secrets.DOCKERHUB_USERNAME }}/$(echo '${{ matrix.name }}' | tr '[:upper:]' '[:lower:]' | tr '_' '-')"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
       - name: Docker meta (tags & labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: docker.io/${{ matrix.image }}
+          images: ${{ env.IMAGE }}
           flavor: |
             latest = false 
           tags: |
