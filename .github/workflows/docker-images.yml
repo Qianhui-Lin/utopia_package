@@ -54,7 +54,7 @@ jobs:
         id: set-matrix
         env:
           CHANGED_FILES: ${{ steps.changes.outputs.all_changed_files }}
-          WF_CHANGED: ${{ steps.wf_changed.outputs.any_changed }}
+          WF_CHANGED: ${{ steps.wf-changed.outputs.any_changed }}
           REBUILD_ALL: ${{ github.event.inputs.rebuild_all || 'false' }} 
           # DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         shell: bash
@@ -144,7 +144,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }},ignore-error=true
           # set platforms need multi-arch (optional)
           # platforms: linux/amd64,linux/arm64
