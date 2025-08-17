@@ -11,6 +11,11 @@ on:
       - 'src/utopia/microservice/**/*.py'
       - '.github/workflows/docker-images.yml'
   workflow_dispatch:
+    inputs:
+      rebuild_all:
+        description: "Rebuild all services"
+        type: boolean
+        default: false
 
 # Prevents multiple builds from running simultaneously for the same branch. If a new push happens while a build is running, it cancels the old one
 concurrency:
@@ -36,12 +41,21 @@ jobs:
         with:
           files: |
             src/utopia/microservice/**
+      
+      - name: Did docker-images workflow change?
+        id: wf-changed
+        uses: tj-actions/changed-files@ed68ef82c095e0d48ec87eccea555d944a631a4c
+        with:
+          files: |
+            .github/workflows/docker-images.yml
 
       # Build a dynamic matrix of only the services that changed
       - name: Compute affected services
         id: set-matrix
         env:
           CHANGED_FILES: ${{ steps.changes.outputs.all_changed_files }}
+          WF_CHANGED: ${{ steps.wf_changed.outputs.any_changed }}
+          REBUILD_ALL: ${{ github.event.inputs.rebuild_all || 'false' }} 
           # DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         shell: bash
         run: |
@@ -49,14 +63,17 @@ jobs:
             import json, os, pathlib
 
             changed = os.environ.get("CHANGED_FILES", "").split()
+            rebuild_all = os.environ.get("WF_CHANGED","false").lower() == "true"
+            rebuild_all = rebuild_all or (os.environ.get("REBUILD_ALL","false").lower() == "true")
+
             root = pathlib.Path("src/utopia/microservice")
-          
 
             services = []
             for dockerfile in root.glob("*/Dockerfile"):
                 service_dir = dockerfile.parent.as_posix()
                 name = dockerfile.parent.name
-                if any(f.startswith(service_dir + "/") or f == f"{service_dir}/Dockerfile" for f in changed):
+                touched = any(f.startswith(service_dir + "/") or f == f"{service_dir}/Dockerfile" for f in changed)
+                if rebuild_all or touched:
                   services.append({"name": name, "context": service_dir, "dockerfile": f"{service_dir}/Dockerfile"})
             matrix={"include":services}
             with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
@@ -83,9 +100,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      # - name: Set up QEMU
-      #   uses: docker/setup-qemu-action@v3
+      # cross-arch emulation  
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -124,6 +141,7 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
