@@ -12,7 +12,9 @@ from bson import ObjectId
 
 app = FastAPI(title="Flow Estimator Service", version="1.0.0")
 
-MONGO_URI = "mongodb://utopiauser:utopiapassword@localhost:27018/utopia?authSource=admin"
+#MONGO_URI = "mongodb://utopiauser:utopiapassword@localhost:27018/utopia?authSource=admin"
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/") 
+
 DB_NAME = os.getenv("DB_NAME", "utopia")
 MODEL_COLLECTION = "model_json"
 INTERACTION_MATRIX_COLLECTION = "interaction"
@@ -303,23 +305,23 @@ def estimate_flows_json_app(model_id, rate_constant_id, particle_state_id, flow_
             "particle_state_id": str(particle_state_id),
             "model_id": str(model_id),
             "system_particle_outflow_list": system_particle_outflow_list,
-            "tables_outputFlows_mass": tables_outputFlows_mass_dict,
-            "tables_outputFlows_number": tables_outputFlows_number_dict,
-            "tables_inputFlows_mass": tables_inputFlows_mass_dict,
-            "tables_inputFlows_number": tables_inputFlows_number_dict
+            "tables_outputFlows_mass": tables_outputFlows_mass,
+            "tables_outputFlows_number": tables_outputFlows_number,
+            "tables_inputFlows_mass": tables_inputFlows_mass,
+            "tables_inputFlows_number": tables_inputFlows_number
         }
         
         return flow_estimation_doc
 
 
-def generate_flows_dict_json(model_json, flow):
+def generate_flows_dict_json(model_json, flow_estimation):
         for unit in ["mass", "number"]:
             if unit == "mass":
-                tables_inputFlows = flow["tables_inputFlows_mass"]
-                tables_outputFlows =flow["tables_outputFlows_mass"]
+                tables_inputFlows = flow_estimation["tables_inputFlows_mass"]
+                tables_outputFlows =flow_estimation["tables_outputFlows_mass"]
             elif unit == "number":
-                tables_inputFlows = flow["tables_inputFlows_number"]
-                tables_outputFlows = flow["tables_outputFlows_number"]
+                tables_inputFlows = flow_estimation["tables_inputFlows_number"]
+                tables_outputFlows = flow_estimation["tables_outputFlows_number"]
             else:
                 raise ValueError("Unit must be 'mass' or 'number'.")
             flows_dict = dict()
@@ -350,10 +352,36 @@ def generate_flows_dict_json(model_json, flow):
                 df2.insert(1, "MP_form", MP_form_df2)
                 flows_dict["input_flows"][comp] = df2
             if unit == "mass":
-                flow["flows_dict_mass"] = flows_dict
+                flow_estimation["flows_dict_mass"] = flows_dict
             else:
-                flow["flows_dict_number"] = flows_dict
-        return flow
+                flow_estimation["flows_dict_number"] = flows_dict
+        return flow_estimation
+
+def convert_dfs_in_flow(flow_estimation_to_convert):
+    flow = flow_estimation_to_convert #保留了原来的
+    # Keys with dicts of DataFrames
+    keys_with_dfs = [
+        "tables_outputFlows_mass",
+        "tables_outputFlows_number",
+        "tables_inputFlows_mass",
+        "tables_inputFlows_number"
+    ]
+    for key in keys_with_dfs:
+        if key in flow and isinstance(flow[key], dict):
+            for subkey, value in flow[key].items():
+                if isinstance(value, pd.DataFrame):
+                    flow[key][subkey] = value.reset_index().to_dict(orient='records')
+                    
+                    
+    # Check flows_dict_mass and flows_dict_number if they exist
+    for main_key in ["flows_dict_mass", "flows_dict_number"]:
+        if main_key in flow and isinstance(flow[main_key], dict):
+            for direction in ["input_flows", "output_flows"]:
+                if direction in flow[main_key] and isinstance(flow[main_key][direction], dict):
+                    for comp, value in flow[main_key][direction].items():
+                        if isinstance(value, pd.DataFrame):
+                            flow[main_key][direction][comp] = value.reset_index().to_dict(orient='records')
+    return flow
 
 
 @app.post("/init_flow_estimation_collection")
@@ -372,14 +400,16 @@ def init_flow_estimation_collection():
 @app.post("/estimate_flow",response_model = ModelResponse)
 def flow_estimation(request: ModelRequest):
     try:
-        flow_doc = estimate_flows_json_app(
+        flow_estimation_doc = estimate_flows_json_app(
             model_id=request.model_id,
             rate_constant_id=request.rate_constant_id,
             particle_state_id=request.particle_state_id,
             flow_id=request.flow_id
         )
-
-        insert_result = flow_estimation_collection.insert_one(flow_doc)
+        model_json = model_json_collection.find_one({'_id':ObjectId(request.model_id)})
+        flow_estimation_doc_updated = generate_flows_dict_json(model_json,flow_estimation_doc)
+        flow_estimation_doc_to_insert = convert_dfs_in_flow(flow_estimation_doc_updated)
+        insert_result = flow_estimation_collection.insert_one(flow_estimation_doc_to_insert)
 
         # Step 3: Return inserted ID
         return ModelResponse(
