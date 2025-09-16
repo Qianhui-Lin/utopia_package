@@ -13,46 +13,29 @@ services:
       - mongo_data:/data/db
 
   generate-object:
-    build:
-      context: .
-      dockerfile: src/utopia/microservice/generate_object/Dockerfile
+    image: linqianhui/generate-object:${IMAGE_TAG}
     env_file:
       - .env
     container_name: generate-object-service
-    # Other service settings...
     depends_on:
       - mongodb
     ports:
       - "8002:8002"
-    # Development only: mount local code so you can edit and auto-reload
-    volumes:
-      - ./src:/app/src
-    command: 
-      uvicorn utopia.microservice.generate_object.generate_object_app_new:app --host 0.0.0.0 --port 8002 --reload
 
   
   load-user-data:
-    build:
-      context: .
-      dockerfile: src/utopia/microservice/load_user_data/Dockerfile
+    image: linqianhui/load-user-data:${IMAGE_TAG}
     env_file:
       - .env
     container_name: load-user-data-service
-    # Other service settings...
+    restart: unless-stopped
     depends_on:
       - mongodb
     ports:
       - "8001:8001"
-     # Development only: mount local code so you can edit and auto-reload
-    volumes:
-      - ./src:/app/src
-    command: 
-      uvicorn utopia.microservice.load_user_data.load_user_data_app:app --host 0.0.0.0 --port 8001 --reload
-    
+
   generate-rate-constant:
-    build:
-      context: .
-      dockerfile: src/utopia/microservice/generate_rate_constant/Dockerfile
+    image: linqianhui/generate-rate-constant:${IMAGE_TAG}
     env_file:
       - .env
     container_name: generate-rate-constant-service
@@ -61,16 +44,9 @@ services:
       - generate-object
     ports:
       - "8003:8003"
-    # Development only: mount local code so you can edit and auto-reload
-    volumes:
-      - ./src:/app/src
-    command:
-      uvicorn utopia.microservice.generate_rate_constant.generate_rate_constant_app:app --host 0.0.0.0 --port 8003 --reload
 
   plot-rate-constant:
-    build:
-      context: .
-      dockerfile: src/utopia/microservice/plot_rate_constant/Dockerfile
+    image: linqianhui/plot-rate-constant:${IMAGE_TAG}
     env_file:
       - .env
     container_name: plot-rate-constant-service
@@ -79,11 +55,62 @@ services:
       - generate-rate-constant
     ports:
       - "8004:8004"
-    # Development only: mount local code so you can edit and auto-reload
-    volumes:
-      - ./src:/app/src
-    command:
-      uvicorn utopia.microservice.plot_rate_constant.plot_rate_constant_app:app --host 0.0.0.0 --port 8004 --reload
-    
+  
+  generate-interaction-matrix:
+    image: linqianhui/generate-interaction-matrix:${IMAGE_TAG}
+    env_file:
+      - .env
+    container_name: generate-interaction-matrix-service
+    depends_on:
+      - mongodb
+      - generate-rate-constant
+    ports:
+      - "8005:8005"
+  
+  solve-steady-state:
+    image: linqianhui/solve-steady-state:${IMAGE_TAG}
+    env_file:
+      - .env
+    container_name: solve-steady-state-service
+    depends_on:
+      - mongodb
+      - generate-interaction-matrix
+    ports:
+      - "8006:8006"
+
+  estimate-flow:
+    image: linqianhui/estimate-flow:${IMAGE_TAG}
+    env_file:
+      - .env
+    container_name: estimate-flow-service
+    depends_on:
+      - mongodb
+      - solve-steady-state
+    ports:
+      - "8007:8007"
+
+  process-result:
+    image: linqianhui/process-result:${IMAGE_TAG}
+    env_file:
+      - .env
+    container_name: process-result-service
+    depends_on:
+      - mongodb
+      - estimate-flow
+    ports:
+      - "8008:8008"
+
+  plot-fraction-distribution:
+    image: linqianhui/plot-fraction-distribution:${IMAGE_TAG}
+    env_file:
+      - .env
+    container_name: plot-fraction-distribution-service
+    depends_on:
+      - mongodb
+      - process-result
+    ports:
+      - "8009:8009"
+
+
 volumes:
   mongo_data:

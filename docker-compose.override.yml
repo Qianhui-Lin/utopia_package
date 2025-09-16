@@ -121,6 +121,60 @@ services:
       - ./src:/app/src
     command:
       uvicorn utopia.microservice.solve_steady_state.solver_steady_state_app:app --host 0.0.0.0 --port 8006 --reload
+  
+  estimate-flow:
+    build:
+      context: .
+      dockerfile: src/utopia/microservice/estimate_flow/Dockerfile
+    env_file:
+        - .env
+    container_name: estimate-flow-service
+    depends_on:
+      - mongodb
+      - solve-steady-state
+    ports:
+      - "8007:8007"
+      # Development only: mount local code so you can edit and auto-reload
+    volumes:
+      - ./src:/app/src
+    command:
+      uvicorn utopia.microservice.estimate_flow.estimate_flow_app:app --host 0.0.0.0 --port 8007 --reload
+
+  process-result:
+    build:
+      context: .
+      dockerfile: src/utopia/microservice/process_result/Dockerfile
+    env_file:
+        - .env
+    container_name: process-result-service
+    depends_on:
+      - mongodb
+      - estimate-flow
+    ports:
+      - "8008:8008"
+      # Development only: mount local code so you can edit and auto-reload
+    volumes:
+      - ./src:/app/src
+    command:
+      uvicorn utopia.microservice.process_result.process_result_app:app --host 0.0.0.0 --port 8008 --reload
+
+  plot-fraction-distribution:
+    build:
+      context: .
+      dockerfile: src/utopia/microservice/plot_fraction_distribution/Dockerfile
+    env_file:
+        - .env
+    container_name: plot-fraction-distribution-service
+    depends_on:
+      - mongodb
+      - process-result
+    ports:
+      - "8009:8009"
+      # Development only: mount local code so you can edit and auto-reload
+    volumes:
+      - ./src:/app/src
+    command:
+      uvicorn utopia.microservice.plot_fraction_distribution.plot_fraction_distribution_app:app --host 0.0.0.0 --port 8009 --reload
 
 volumes:
   mongo_data:
