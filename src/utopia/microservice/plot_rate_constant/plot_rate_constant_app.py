@@ -87,7 +87,7 @@ def plot_rateConstants_json(model_id,rate_constant_id):
 @app.get("/")
 def root():
     """Health check endpoint"""
-    return {"message": "Rate Constants Generator Service is running", "status": "healthy"}
+    return {"message": "Rate Constants Plotting Service is running", "status": "healthy"}
 
 @app.get("/rate_constants/{model_id}/{rate_constant_id}")
 def get_rate_constants_table(model_id: str, rate_constant_id: str):
