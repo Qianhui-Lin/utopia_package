@@ -12,6 +12,7 @@ import os
 from bson import ObjectId
 from io import BytesIO
 from typing import Any
+import math
 
 app = FastAPI(title="Fraction Distribution Plotting Service", version="1.0.0")
 
@@ -185,6 +186,109 @@ def plot_number_fraction(model_id: str, processed_result_id: str):
         if not processed_results:
             raise HTTPException(status_code=404, detail="Processed result not found")
         fig = plot_fractionDistribution_heatmaps_json(processed_results, "number_fraction")
+        return _respond_with_png(fig)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get(
+    "/plot/fraction_distribution/mass/normalised/{model_id}/{processed_result_id}",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}, "description": "PNG normalised mass-fraction bar chart"}}
+)
+def plot_mass_fraction_normalised(model_id: str, processed_result_id: str):
+    try:
+        processed_results = processed_result_collection.find_one({"_id": ObjectId(processed_result_id)})
+
+        if not processed_results:
+            raise HTTPException(status_code=404, detail="Processed result not found")
+
+        df= pd.DataFrame(processed_results["processed_result"])
+
+        # First normalize concentrations within each compartment
+        df_norm = df.copy()
+        df_norm["normalized_conc"] = df_norm.groupby("Compartment")["concentration_g_m3"].transform(
+            lambda x: x / x.sum()
+        )
+
+        # Get all compartments
+        compartments = df_norm["Compartment"].unique()
+        n_compartments = len(compartments)
+
+        # Choose subplot grid size (approx. square)
+        ncols = 4
+        nrows = math.ceil(n_compartments / ncols)
+
+        # Plot
+        fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 3*nrows), sharey=True)
+
+        for ax, comp in zip(axes.flat, compartments):
+            subset = df_norm[df_norm["Compartment"] == comp].sort_values("Size_Fraction_um")
+            ax.bar(subset["Size_Fraction_um"].astype(str), subset["normalized_conc"])
+            ax.set_title(comp, fontsize=9)
+            ax.set_xlabel("Size (µm)")
+            ax.set_ylabel("Relative contribution")
+            ax.tick_params(axis="x", rotation=45)
+
+        # Remove empty subplots if any
+        for ax in axes.flat[n_compartments:]:
+            ax.axis("off")
+
+        plt.tight_layout()
+        fig = plt.gcf()
+        return _respond_with_png(fig)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+@app.get(
+    "/plot/fraction_distribution/number/normalised/{model_id}/{processed_result_id}",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}, "description": "PNG normalised number-fraction bar chart"}}
+)
+def plot_number_fraction_normalised(model_id: str, processed_result_id: str):
+    try:
+        processed_results = processed_result_collection.find_one({"_id": ObjectId(processed_result_id)})
+
+        if not processed_results:
+            raise HTTPException(status_code=404, detail="Processed result not found")
+
+        df= pd.DataFrame(processed_results["processed_result"])
+
+        # First normalize concentrations within each compartment
+        df_norm = df.copy()
+        df_norm["normalized_conc"] = df_norm.groupby("Compartment")["concentration_num_m3"].transform(
+    lambda x: x / x.sum()
+)
+
+        # Get all compartments
+        compartments = df_norm["Compartment"].unique()
+        n_compartments = len(compartments)
+
+        # Choose subplot grid size (approx. square)
+        ncols = 4
+        nrows = math.ceil(n_compartments / ncols)
+
+        # Plot
+        fig, axes = plt.subplots(nrows, ncols, figsize=(4*ncols, 3*nrows), sharey=True)
+
+        for ax, comp in zip(axes.flat, compartments):
+            subset = df_norm[df_norm["Compartment"] == comp].sort_values("Size_Fraction_um")
+            ax.bar(subset["Size_Fraction_um"].astype(str), subset["normalized_conc"])
+            ax.set_title(comp, fontsize=9)
+            ax.set_xlabel("Size (µm)")
+            ax.set_ylabel("Relative contribution")
+            ax.tick_params(axis="x", rotation=45)
+
+        # Remove empty subplots if any
+        for ax in axes.flat[n_compartments:]:
+            ax.axis("off")
+
+        plt.tight_layout()
+        fig = plt.gcf()
         return _respond_with_png(fig)
     except HTTPException:
         raise
