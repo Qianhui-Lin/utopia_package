@@ -11,6 +11,7 @@ import pymongo
 import os
 from bson import ObjectId
 from utopia.microservice.process_result.process_result_function import *
+from utopia.microservice.process_result.extract_results_by_compartment_function import *
 
 app = FastAPI(title="Results Processor Service", version="1.0.0")
 
@@ -49,6 +50,33 @@ class ModelResponse(BaseModel):
     processed_result_id :str
     status: str = "processed results generated and saved to mongodb"
 
+
+class ModelRequest_comp(BaseModel):
+    model_id: str
+    processed_result_id: str
+    flow_estimation_id: str
+
+class ModelResponse_comp(BaseModel):
+    model_id: str
+    processed_result_id :str
+    status: str = "rusults by compartment extracted and saved to mongodb"
+
+
+class ModelRequest_balance(BaseModel):
+    model_id: str
+    processed_result_id: str
+
+class ModelResponse_balance(BaseModel):
+    model_id: str
+    processed_result_id :str
+    status: str = "mass balance results by component generated and saved to mongodb"
+
+
+@app.get("/")
+def root():
+    """Health check endpoint"""
+    return {"message": "Processing Result Service is running", "status": "healthy"}
+
 @app.post("/init_processed_result_collection")
 def init_processed_result_collection():
     try:
@@ -70,9 +98,9 @@ def process_result(request: ModelRequest):
                 "interaction_matrix_id":request.interaction_matrix_id
         }
         
-        #interaction_matrix_dict_res = requests.post("http://localhost:8005/generate_interaction_matrix_dict", json = interaction_data)
+        interaction_matrix_dict_res = requests.post("http://localhost:8005/generate_interaction_matrix_dict", json = interaction_data)
 
-        interaction_matrix_dict_res = requests.post("http://generate-interaction-matrix:8005/generate_interaction_matrix_dict", json = interaction_data)
+        #interaction_matrix_dict_res = requests.post("http://generate-interaction-matrix:8005/generate_interaction_matrix_dict", json = interaction_data)
         
         if interaction_matrix_dict_res.status_code != 200:
             raise HTTPException(status_code=502, detail=f"Downstream error: {interaction_matrix_dict_res.text[:200]}")
@@ -102,3 +130,82 @@ def process_result(request: ModelRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    
+
+
+@app.post("/extract_results_by_compartment",response_model = ModelResponse_comp)
+def process_result(request: ModelRequest_comp):
+    try:
+        interaction_data = {
+                "model_id": request.model_id,
+                "processed_result_id": request.processed_result_id,
+                "flow_estimation_id":request.flow_estimation_id
+        }
+        
+        model_json = model_json_collection.find_one({"_id":ObjectId(request.model_id)})
+        processed_results = processed_result_collection.find_one({"_id":ObjectId(request.processed_result_id)})
+        flow_estimation = flow_estimation_collection.find_one({"_id":ObjectId(request.flow_estimation_id)})
+        # print("processed_results:", processed_results)
+        processed_results_df = extract_results_by_compartment_json(processed_results,model_json,flow_estimation)
+        processed_results_with_index = processed_results_df.reset_index()
+        update_result = processed_result_collection.update_one(
+            {
+            '_id': ObjectId(request.processed_result_id)
+            },
+            {
+                '$set':{
+                    'model_id': request.model_id,
+                    'results_by_comp': processed_results_with_index.to_dict('records')
+                }
+
+            }
+        )
+        # Step 3: Return inserted ID
+        return ModelResponse_comp(
+            model_id = request.model_id,
+            processed_result_id = str(request.processed_result_id)
+            )
+            
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    
+
+@app.post("/mass_balance_by_compartment",response_model = ModelResponse_balance)
+def process_result(request: ModelRequest_balance):
+    try:
+        processed_results = processed_result_collection.find_one({"_id": ObjectId(request.processed_result_id)})
+        if not processed_results:
+            raise HTTPException(status_code=404, detail="processed_result_id not found")
+        df = pd.DataFrame(processed_results["results_by_comp"])
+        model_json = model_json_collection.find_one({'_id':ObjectId(request.model_id)})
+        mass_balances = []
+        for i in range(len(df)):
+            comp = df['Compartments'].iloc[i]
+            inflow = df['Total_inflows_g_s'].iloc[i]
+            outflow = df['Total_outflows_g_s'].iloc[i]
+            emissions = sum(model_json["emiss_dict_g_s"][comp].values())
+
+            balance = inflow + emissions - outflow
+
+            mass_balances.append({
+                "compartment": comp,
+                "mass_balance_g_s": balance
+            })
+
+        # Save back into processed_result_collection
+        processed_result_collection.update_one(
+            {"_id": ObjectId(request.processed_result_id)},
+            {"$set": {"mass_balance_by_comp": mass_balances}}
+        )
+
+        return ModelResponse_balance(
+            model_id=request.model_id,
+            processed_result_id=request.processed_result_id,
+            status="mass balance results by component generated and saved to mongodb"
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

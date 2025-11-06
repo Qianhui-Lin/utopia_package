@@ -788,7 +788,7 @@ def plot_compartment_distribution_json(
         plt.show()
 
         return fig
-# 到这里了 Exposure_indicators_calculation_json 还没改 🍚
+
 def estimate_exposure_indicators_json(model_json,flow,result):
         """Estimate overall size dependent exposure indicators"""
         (
@@ -798,6 +798,8 @@ def estimate_exposure_indicators_json(model_json,flow,result):
 
         # return result["Overall_exposure_indicators"],result["size_fraction_indicators"]
 
+
+# 下面可以删掉了⛰️
 class ResultsProcessor:
     """Provides functionalities for restructuring, analysing and plotting the UTOPIA model results."""
 
