@@ -8,7 +8,6 @@ from utopia.globalConstants import *
 from utopia.objects.compartment_classes import *
 from utopia.objects.particulate_classes import *
 from utopia.objects.box_class import *
-import json
 
 from utopia.preprocessing.readinputs_from_csv import *
 
@@ -20,7 +19,6 @@ def generate_objects(model):
     # print(f"The model box {boxName} has been created")
 
     modelBoxes = [UTOPIA]
-    
     # modelBoxes=instantiateBoxes_from_csv(boxFile)
     boxNames_list = [b.Bname for b in modelBoxes]
 
@@ -80,7 +78,7 @@ def generate_objects(model):
         Pcomposition="Mixed",
         Pdensity_kg_m3=model.spm_density_kg_m3,
         Pshape="sphere",
-        PdimensionX_um=model.spm_radius_um,
+        PdimensionX_um=model.spm_radius_um*2,
         PdimensionY_um=0,
         PdimensionZ_um=0,
     )
@@ -187,10 +185,6 @@ def generate_objects(model):
         compartmentNames_list,
         boxNames_list,
     )
-
-    print("modleBoxes: ", modelBoxes)
-    print("type of modelBoxes: ", type(modelBoxes))
-    print("UTOPIA_dict_: ", UTOPIA.__dict__)
 
     return (
         system_particle_object_list,
