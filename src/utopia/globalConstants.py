@@ -1,4 +1,4 @@
-# this files stores all constants needed for running the model (i.e. for
+# This files stores all constants needed for running the model (i.e. for
 # particulate & environmental compartment objects & calcualting rate processes)
 
 k_B_J_K = 1.38 * 10**-23  # Boltzmann constant k_B (in J/K)
