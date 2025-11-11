@@ -79,9 +79,9 @@ def generate_particles_dataframe_json(input_doc, config_doc):
                 "shape": [shape] * N_sizeBins,
                 "composition": [MP_composition] * N_sizeBins,
                 "density_kg_m3": [MPdensity_kg_m3] * N_sizeBins,
-                "dimensionX_um": [d / 2 for d in size_distribution],
-                "dimensionY_um": [d / 2 for d in size_distribution],
-                "dimensionZ_um": [d / 2 for d in size_distribution],
+                "dimensionX_um": [d for d in size_distribution],
+                "dimensionY_um": [d for d in size_distribution],
+                "dimensionZ_um": [d for d in size_distribution],
             }
             particles_df = pd.DataFrame(data).to_dict(orient='records')
 
@@ -282,7 +282,7 @@ def generate_objects_json(model_json):
             Pcomposition="Mixed",
             Pdensity_kg_m3=model_json["spm_density_kg_m3"],
             Pshape="sphere",
-            PdimensionX_um=model_json["spm_radius_um"],
+            PdimensionX_um=model_json["spm_radius_um"]*2,
             PdimensionY_um=0,
             PdimensionZ_um=0,
         )
