@@ -711,7 +711,7 @@ def burial(particle, model_json):
     w_den_kg_m3 = density_seaWater_kg_m3
     if "Freshwater" in particle["Pcompartment_Cname"]:
         w_den_kg_m3 = density_w_21C_kg_m3
-
+    # calculate the settling velocity using the rc_settling module
     if particle["Pcompartment_Cname"] in resusp_dict:
 
         vSet_m_s = calculate_settling_velocity(
@@ -723,7 +723,30 @@ def burial(particle, model_json):
             g=g_m_s2,
         )
 
-    k_burial = burial_dict[particle["Pcompartment_Cname"]]
+
+        water_compartment_name = sediment_to_water[particle["Pcompartment_Cname"]]
+
+        if vSet_m_s > 0:
+            k_set = vSet_m_s / float(model_json["dict_comp"][water_compartment_name]["Cdepth_m"])
+        else:
+            k_set = 0
+
+        # extract the resuspension rate from the dictionary
+        k_resusp = resusp_dict[particle["Pcompartment_Cname"]]
+
+        # calculate the burial rate constant
+        k_burial = k_set - k_resusp
+
+        if k_burial < 0:
+            k_burial = 0
+
+    elif particle["Pcompartment_Cname"] == "Sediment_Coast":
+        k_burial = 1e-9 # assign burial rate taken from SimpleBox for Plastics model
+
+    elif particle["Pcompartment_Cname"] == "Sediment_Ocean":
+        k_burial = 5e-10 # assign burial rate taken from SimpleBox for Plastics model
+    else:
+        k_burial = 0
 
     return k_burial
 
