@@ -27,7 +27,7 @@ rate_constant_collection = db[RATE_CONSTANT_COLLECTION]
 def create_rateConstants_table_json(model_id,rate_constant_id):
         model_json = model_json_collection.find_one({'_id':ObjectId(model_id)})
         rate_constant_data = rate_constant_collection.find_one({'_id':ObjectId(rate_constant_id)})
-        print("rate_constant_data:", rate_constant_data)
+        #print("rate_constant_data:", rate_constant_data)
 
         df_dict = {
             "Pcode":[],
