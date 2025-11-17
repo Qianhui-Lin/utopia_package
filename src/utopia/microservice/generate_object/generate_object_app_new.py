@@ -104,7 +104,7 @@ def generate_coding_dictionaries_json(model_id):
     particles_df = pd.DataFrame(model_json_doc["particles_df"])
     # Dictionary mapping particle names to sizes
     dict_size_coding = dict(
-        zip(particles_df["Name"], particles_df["dimensionX_um"] * 2)
+        zip(particles_df["Name"], particles_df["dimensionY_um"])
         )
 
     # Generate size codes (a-z based on number of bins)
