@@ -11,6 +11,7 @@ import pymongo
 import os
 from bson import ObjectId
 from utopia.microservice.calculate_exposure_indicator.exposure_indicators_calculation_json import *
+from utopia.microservice.calculate_exposure_indicator.emission_fractions_calculation_json import *
 
 
 app = FastAPI(title="Exposure Indicator Calculating Service", version="1.0.0")
@@ -50,6 +51,17 @@ class ModelResponse(BaseModel):
     model_id: str
     exposure_indicator_id :str
     status: str = "exposure indicator calculated and saved to MongoDB"
+
+class ModelRequest_emission_fraction(BaseModel):
+    base_model_id: str
+    rate_constant_id: str
+    interaction_matrix_id: str
+
+class ModelResponse_emission_fraction(BaseModel):
+    base_model_id: str
+    new_model_id: dict
+    emission_fraction_id :str
+    status: str = "emission fraction calculated and saved to MongoDB"
 
 @app.get("/")
 def root():
@@ -120,7 +132,7 @@ def init_exposure_indicator_collection():
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
     
 @app.post("/calculate_exposure_indicator",response_model = ModelResponse)
-def process_result(request: ModelRequest):
+def calcuate_exposure_inidicator(request: ModelRequest):
     try:
         model_id = request.model_id
         rate_constant_id = request.rate_constant_id
@@ -144,6 +156,142 @@ def process_result(request: ModelRequest):
             model_id=request.model_id,
             exposure_indicator_id=str(insert_exposure_result.inserted_id)
         )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    
+@app.post("/calculate_emssison_fraction",response_model = ModelResponse_emission_fraction)
+def calculate_emssison_fraction(request: ModelRequest_emission_fraction):
+    try:
+        dispersing_comp_list = ["Air", "Ocean_Mixed_Water", "Ocean_Surface_Water"]
+        base_model_id = request.base_model_id
+        rate_constant_id = request.rate_constant_id
+        interaction_matrix_id = request.interaction_matrix_id
+        base_model_json = model_json_collection.find_one({"_id":ObjectId(request.base_model_id)}) 
+        """Estimate emission fractions"""
+        # For estimating the emission fractions we need to make emissions to targeted compartments.
+
+        # Run model with emissions to specific compartments that can cause emissions to remote regions (dispersing compartments) to estimate the emission fractions
+
+        model_results = {}
+        new_model_id_dict = {}
+        model_json_new_models = {}
+        processed_result_new_models = {}
+        flow_estimation_new_models = {}
+
+        # run the model with new data (just modifying the recieving compartment)
+
+        # Reasign emissions to the dispersing compartments
+        # Identify where the emission is
+        base_emiss_dict = base_model_json["emiss_dict_g_s"]
+        for compartment, values in base_emiss_dict.items():
+            if any(v != 0 for v in values.values()):
+                emission_pattern = values
+                source_compartment = compartment
+                break
+        for dispersing_comp in dispersing_comp_list:
+            new_dict = copy.deepcopy(base_emiss_dict)
+
+            # Clear all emissions
+            for comp in new_dict:
+                for k in new_dict[comp]:
+                    new_dict[comp][k] = 0
+
+            # Apply the emission pattern to the target compartment
+            new_dict[dispersing_comp] = copy.deepcopy(emission_pattern)
+
+            # Create a copy of the model and asign the new emissions dictionary
+            new_model_json = copy.deepcopy(base_model_json)
+            new_model_json["emiss_dict_g_s"] = new_dict
+            # run the new model objet to use new results
+
+            if '_id' in new_model_json:
+                del new_model_json['_id']
+            inserted_new_model_json = model_json_collection.insert_one(new_model_json)
+            new_model_id = str(inserted_new_model_json.inserted_id)
+            # Generate new dictionaries moving emission to each dispersing compartment and run the model
+            new_model_id_dict[dispersing_comp] = new_model_id
+
+            solve_steady_state_res = requests.post(
+                "http://localhost:8006/solve_steady_state",
+                json = {
+                    "model_id": str(new_model_id),
+                    "interaction_matrix_id": interaction_matrix_id
+                }
+            )
+            if solve_steady_state_res.ok:
+                print("Response:", solve_steady_state_res.json())
+            else:
+                print("Error:", solve_steady_state_res.status_code, solve_steady_state_res.text)    
+            flow_estimation_res = requests.post(
+                "http://localhost:8007/estimate_flow",
+                json = {
+                    "model_id": str(new_model_id),
+                    "rate_constant_id": rate_constant_id,
+                    "particle_state_id":solve_steady_state_res.json()["particle_state_id"],
+                    "flow_id": solve_steady_state_res.json()["flow_id"]
+                }
+            )
+            if flow_estimation_res.ok:
+                print("Response:", flow_estimation_res.json())
+            else:
+                print("Error:", flow_estimation_res.status_code, flow_estimation_res.text)
+
+            process_result_res = requests.post(
+                "http://localhost:8008/process_result",
+                json = {
+                    "model_id": str(new_model_id),
+                    "result_id": solve_steady_state_res.json()["result_id"],
+                    "rate_constant_id": rate_constant_id,
+                    "interaction_matrix_id": interaction_matrix_id,
+                    "particle_state_id":solve_steady_state_res.json()["particle_state_id"],
+                    "flow_estimation_id": flow_estimation_res.json()["flow_estimation_id"]
+                }
+            )
+            if process_result_res.ok:
+                print("Response:", process_result_res.json())
+            else:
+                print("Error:", process_result_res.status_code, process_result_res.text)
+            
+            model_json_new_models[dispersing_comp] = new_model_json
+            new_processed_result_id = process_result_res.json()["processed_result_id"]
+            new_processed_result_doc = processed_result_collection.find_one({"_id":ObjectId(new_processed_result_id)})
+            processed_result_new_models[dispersing_comp] = new_processed_result_doc
+
+            new_flow_estimation_id = flow_estimation_res.json()["flow_estimation_id"]
+            new_flow_estimation_doc = flow_estimation_collection.find_one({"_id":ObjectId(new_flow_estimation_id)})
+            flow_estimation_new_models[dispersing_comp] = new_flow_estimation_doc
+
+        
+        emission_fractions_mass_data = emission_fractions_calculations_json(processed_result_new_models,model_json_new_models,flow_estimation_new_models)
+
+        exposure_indicator_doc = exposure_indicator_collection.find_one({"model_id": request.base_model_id})
+
+        if exposure_indicator_doc is None:
+            emission_fraction_mass_doc = exposure_indicator_collection.insert_one(
+                {"model_id": base_model_id,
+                "emission_fraction_mass": emission_fractions_mass_data}
+            )
+            emission_fraction_id = str(emission_fraction_mass_doc.inserted_id)
+        else:
+            emission_fraction_id = str(exposure_indicator_doc["_id"])
+
+
+            exposure_indicator_collection.update_one(
+                {"_id": exposure_indicator_doc["_id"]},
+                {"$set": {"emission_fraction_mass": emission_fractions_mass_data}}
+            )
+        
+
+        return ModelResponse_emission_fraction(
+            base_model_id = base_model_id,
+            new_model_id = new_model_id_dict,
+            emission_fraction_id = emission_fraction_id
+        )
+    
+
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

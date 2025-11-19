@@ -1,4 +1,5 @@
 import copy
+import os
 import pandas as pd
 # from utopia.utopia_json import *
 # from utopia.results_processing_json.process_results_json import *
@@ -6,6 +7,7 @@ import pandas as pd
 
 # from results_processing.process_results import ResultsProcessor
 import matplotlib.pyplot as plt
+import pymongo
 
 # MongoDB settings - using environment variables
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
@@ -17,10 +19,32 @@ CONFIG_COLLECTION = "configure_data"
 INPUT_COLLECTION = "input_data"
 MODEL_COLLECTION = "model_json"
 
+
 dispersing_comp_list = ["Air", "Ocean_Mixed_Water", "Ocean_Surface_Water"]
 
+def flatten_list_columns(df):
+    for col in df.columns:
+        # Clean each cell
+        def clean_cell(x):
+            # Convert strings to numbers if possible
+            if isinstance(x, str):
+                try:
+                    return float(x)
+                except ValueError:
+                    return x   # leave unchanged if not convertible
+            
+            # Sum list-values
+            if isinstance(x, list):
+                return sum(x)
+            
+            return x
 
-def emission_fractions_calculations_json(result,model_json,model_results):
+        df[col] = df[col].apply(clean_cell)
+
+    return df
+
+
+def emission_fractions_calculations_json(processed_result_new_models,model_json_new_models,flow_estimation_new_models):
     """Calculate the emission fractions Following the LRTP metrics of the emission fractions approach (EFA; φ1, φ2, φ3) from https://doi.org/10.1021/acs.est.2c03047 Rigth now we are only calculating φ1 and φ2. The φ3 is not calculated as it is not needed for the model and we only estimate them in mass."""
 
     ## We use the same values of Crossectional area for Air and Water as in Breivik et al. 2022 and scale it for our water compartments
@@ -48,24 +72,39 @@ def emission_fractions_calculations_json(result,model_json,model_results):
 
     """Environmentally Dispersed Fraction (φ1)"""
     # Environmentally Dispersed Fraction (φ1) quantifies the relative extent to which the pollutants (MPs) can reach remote regions.
+    processed_result_df = {}
 
+    for R_comp in dispersing_comp_list:
+        processed_list = processed_result_new_models[R_comp]["processed_result"]
+        processed_result_df[R_comp] = pd.DataFrame(processed_list)
     φ1_dict_mass = {}
     φ1_dict_num = {}
-
+    # print("=== DEBUG processed_result_new_models KEYS ===")
+    # for R_comp in dispersing_comp_list:
+    #     print(R_comp, processed_result_new_models[R_comp].keys())
     # Environmentally Dispersed Fractions (ϕ1)
+    # print("\n=== FULL processed_result content for debugging ===")
+    # import pprint
+    # for R_comp in dispersing_comp_list:
+    #     pprint.pprint(processed_result_new_models[R_comp]["processed_result"])
     for R_comp in dispersing_comp_list:
+        df = processed_result_df[R_comp]
+
+        # select rows belonging to this compartment
+        comp_mask = df["Compartment"] == R_comp
+
+        # sum concentration_g_m3 over all size fractions / forms for this compartment
+        conc_sum = df.loc[comp_mask, "concentration_g_m3"].sum()
+
         Nadv = (
-            sum(
-                result["Results_extended"]["concentration_g_m3"][
-                    result["Results_extended"]["Compartment"] == R_comp
-                ]
-            )
+            conc_sum
             * crossSectional_area_m2[R_comp]
-            * float(model_json["dict_comp"][R_comp]["flowVelocity_m_s"])
+            * float(model_json_new_models[R_comp]["dict_comp"][R_comp]["flowVelocity_m_s"])
         )
+
         NE_g_s = sum(
             value
-            for subdict in model_json["emiss_dict_g_s"].values()
+            for subdict in model_json_new_models[R_comp]["emiss_dict_g_s"].values()
             for value in subdict.values()
         )
 
@@ -143,7 +182,30 @@ def emission_fractions_calculations_json(result,model_json,model_results):
         "Sediment_Ocean",
         "Beaches_Soil_Surface",
     ]
+    # import pprint
 
+    # for transfComp in dispersing_comp_list:
+    #     print("\n=== DEBUG outputFlows for", transfComp, "===")
+    #     pprint.pprint(flow_estimation_new_models[transfComp]["tables_outputFlows_mass"])
+    flow_input_df = {}
+    flow_output_df = {}
+
+    for transfComp in dispersing_comp_list:
+
+        # Convert input flows (dict of list-of-dicts → dict of DataFrames)
+        input_dict = flow_estimation_new_models[transfComp]["tables_inputFlows_mass"]
+        print("generated input dict")
+        flow_input_df[transfComp] = {
+            target: pd.DataFrame(input_dict[target])
+            for target in input_dict
+        }
+        print("generated flow_input_df")
+        # Convert output flows (dict of list-of-dicts → dict of DataFrames)
+        output_dict = flow_estimation_new_models[transfComp]["tables_outputFlows_mass"]
+        flow_output_df[transfComp] = {
+            target: pd.DataFrame(output_dict[target])
+            for target in output_dict
+        }
     for target_remote_comp in target_remote_comp_List:
         φ2_Tcomp = {}
         # φ2_Tcomp_num = {}
@@ -156,40 +218,53 @@ def emission_fractions_calculations_json(result,model_json,model_results):
                 NE_x_g_s = 0
             # NE_x_num_s = 0
 
-            input_flows = model_results[transfComp]["tables_inputFlows"][
-                target_remote_comp
-            ]
+            input_flows  = flow_input_df[transfComp][target_remote_comp].copy()
+            output_flows = flow_output_df[transfComp][target_remote_comp].copy()
+
             # input_flows_num = model_results[transfComp]["tables_inputFlows_num"][
             #     target_remote_comp
             # ]
-            output_flows = model_results[transfComp]["tables_outputFlows"][
-                target_remote_comp
-            ]
             # output_flows_num = model_results[transfComp]["tables_outputFlows_number"][
             #     target_remote_comp
             # ]
-
+            
             for k_p in internal_comp_process_list:
-                if k_p in output_flows:
+                if k_p in output_flows.columns:
                     output_flows.drop(columns=k_p, inplace=True)
                 # if k_p in output_flows_num:
                 #     output_flows_num.drop(columns=k_p, inplace=True)
+                        # Flatten list-valued columns
+
+            input_flows  = flatten_list_columns(input_flows)
+            output_flows = flatten_list_columns(output_flows)
+            print("generated flatten list columns")
 
             # Substitute the columns of the dataframe that have list of values for the sum of the values(sum output flows of that process)
-            for k_o in output_flows:
-                output_flows[k_o] = [
-                    sum(x) if isinstance(x, list) else x for x in output_flows[k_o]
-                ]
+            # for k_o in output_flows:
+            #     output_flows[k_o] = [
+            #         sum(x) if isinstance(x, list) else x for x in output_flows[k_o]
+            #     ]
 
+            # Compute totals safely
+            total_in  = input_flows.sum(numeric_only=True).sum()
+            total_out = output_flows.sum(numeric_only=True).sum()
+
+            # φ2 calculation
             φ2_Tcomp[transfComp] = (
-                φ1_dict_mass[transfComp]
-                * (
-                    NE_x_g_s
-                    + sum([sum(input_flows[P]) for P in input_flows])
-                    - sum([sum(output_flows[P]) for P in output_flows])
-                )
-                / NE_g_s
+            φ1_dict_mass[transfComp] *
+            (NE_x_g_s + total_in - total_out) /
+            NE_g_s
             )
+
+            # φ2_Tcomp[transfComp] = (
+            #     φ1_dict_mass[transfComp]
+            #     * (
+            #         NE_x_g_s
+            #         + sum([sum(input_flows[P]) for P in input_flows])
+            #         - sum([sum(output_flows[P]) for P in output_flows])
+            #     )
+            #     / NE_g_s
+            # )
             # φ2_Tcomp_num[transfComp] = (
             #     φ1_dict_num[transfComp]
             #     * (
@@ -300,7 +375,7 @@ def plot_emission_fractions(emission_fractions_data, emiss_comp):
     plt.legend(loc="center left", bbox_to_anchor=(1, 0.5), fontsize=14)
     plt.tight_layout()
     fig = plt.gcf()
-    plt.show()
+    # plt.show()
     return fig
 
 
@@ -308,6 +383,7 @@ def estimate_emission_fractions_json(model_json):
     from utopia.results_processing.process_results import ResultsProcessor
     client = pymongo.MongoClient(MONGO_URI)
     db = client['utopia']
+    model_json_collection = db[MODEL_COLLECTION]
 
     """Estimate emission fractions"""
     # For estimating the emission fractions we need to make emissions to targeted compartments.
@@ -385,7 +461,7 @@ def estimate_emission_fractions_json(model_json):
 
         estimate_flows_json(new_model_json, flow_new_model)
         generate_flows_dict_json(new_model_json, flow_new_model)
-        process_results_json(new_model_json,new_result, flow_new_model) # 返回更新后的new_result
+        process_results_json(new_model_json, new_result, flow_new_model) # 返回更新后的new_result
 
         model_results[dispersing_comp] = {
             "Results_extended": new_result["Results_extended"],
@@ -401,7 +477,7 @@ def estimate_emission_fractions_json(model_json):
     )
     emiss_comp = []
     # 此处需要检查是 model_json还是new_model_json
-    for compartment, size_fractions in new_model_json["emiss_dict_g_s"].items():
+    for compartment, size_fractions in model_json["emiss_dict_g_s"].items():
         for fraction, value in size_fractions.items():
             if value > 0:
                 emiss_comp.append(compartment)
