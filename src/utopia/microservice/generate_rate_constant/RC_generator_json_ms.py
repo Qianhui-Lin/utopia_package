@@ -889,17 +889,20 @@ def dry_deposition(particle, model_json):
 
         # Example usage
         d = particle["diameter_m"]
-        rho = particle["Pdensity_kg_m3"]
-        Rep = ReynoldsNumberFromStokes(d, rho)
+    elif particle["Pshape"] == "fiber" or "fibre" or "cylinder":
+        d = particle["diameter_m"]
 
-        initial_Rep = ReynoldsNumberFromStokes(d, rho)
-        initial_Settling = kineticCstdrySettlingNewtonSphere(
+    rho = particle["Pdensity_kg_m3"]
+    Rep = ReynoldsNumberFromStokes(d, rho)
+
+    initial_Rep = ReynoldsNumberFromStokes(d, rho)
+    initial_Settling = kineticCstdrySettlingNewtonSphere(
             d, rho, Rep
         )  # Initial guess for settling velocity
-        settling_velocity = get_settling(initial_Settling, d, rho, initial_Rep)
+    settling_velocity = get_settling(initial_Settling, d, rho, initial_Rep)
         # print("Final settling velocity:", settling_velocity, ReynoldsNumberFromVg(d, rho, settling_velocity))
 
-        v_dd = settling_velocity
+    v_dd = settling_velocity
 
     #     if particle.diameter_um <= 17:
     #         # For particles < 16.7 um we use Brownian regime to describe settling velocity

@@ -84,6 +84,26 @@ def generate_particles_dataframe_json(input_doc, config_doc):
                 "dimensionZ_um": [d for d in size_distribution],
             }
             particles_df = pd.DataFrame(data).to_dict(orient='records')
+        
+        elif shape == "fiber" or "fibre" or "cylinder":
+            # NOTE: # PdimensionX_m -- shortest size
+            # PdimensionY_m -- longest size
+            # PdimensionZ_m -- intermediate size
+            # temporarily defined dimensionY_um as the size distribution
+            # from 5000 um to 500 nm, the diameter is from 2500 um to 250 nm.
+            # (based on datasets provided by 10.1016/j.envres.2023.115783)
+            data = {
+                "Name": [f"mp{i+1}" for i in range(N_sizeBins)],
+                "form": ["freeMP"] * N_sizeBins,
+                "shape": [shape] * N_sizeBins,
+                "composition": [MP_composition] * N_sizeBins,
+                "density_kg_m3": [MPdensity_kg_m3] * N_sizeBins,
+                "dimensionX_um": [d / 10 for d in size_distribution],
+                "dimensionY_um": [d for d in size_distribution],
+                "dimensionZ_um": [d / 10 for d in size_distribution],
+
+            }
+            particles_df = pd.DataFrame(data).to_dict(orient='records')
 
 
         return particles_df
