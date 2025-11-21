@@ -44,7 +44,7 @@ def flatten_list_columns(df):
     return df
 
 
-def emission_fractions_calculations_json(processed_result_new_models,model_json_new_models,flow_estimation_new_models):
+def emission_fractions_calculations_json(model_json,processed_result,processed_result_new_models,model_json_new_models,flow_estimation_new_models):
     """Calculate the emission fractions Following the LRTP metrics of the emission fractions approach (EFA; φ1, φ2, φ3) from https://doi.org/10.1021/acs.est.2c03047 Rigth now we are only calculating φ1 and φ2. The φ3 is not calculated as it is not needed for the model and we only estimate them in mass."""
 
     ## We use the same values of Crossectional area for Air and Water as in Breivik et al. 2022 and scale it for our water compartments
@@ -75,7 +75,9 @@ def emission_fractions_calculations_json(processed_result_new_models,model_json_
     processed_result_df = {}
 
     for R_comp in dispersing_comp_list:
-        processed_list = processed_result_new_models[R_comp]["processed_result"]
+        # processed_list = processed_result_new_models[R_comp]["processed_result"]
+        # processed_list = processed_result_new_models["Ocean_Surface_Water"]["processed_result"]
+        processed_list = processed_result["processed_result"]
         processed_result_df[R_comp] = pd.DataFrame(processed_list)
     φ1_dict_mass = {}
     φ1_dict_num = {}
@@ -99,12 +101,17 @@ def emission_fractions_calculations_json(processed_result_new_models,model_json_
         Nadv = (
             conc_sum
             * crossSectional_area_m2[R_comp]
-            * float(model_json_new_models[R_comp]["dict_comp"][R_comp]["flowVelocity_m_s"])
+            # * float(model_json_new_models[R_comp]["dict_comp"][R_comp]["flowVelocity_m_s"])
+            # * float(model_json_new_models["Ocean_Surface_Water"]["dict_comp"][R_comp]["flowVelocity_m_s"])
+            * float(model_json["dict_comp"][R_comp]["flowVelocity_m_s"])
+
         )
 
         NE_g_s = sum(
             value
-            for subdict in model_json_new_models[R_comp]["emiss_dict_g_s"].values()
+            # for subdict in model_json_new_models[R_comp]["emiss_dict_g_s"].values()
+            # for subdict in model_json_new_models["Ocean_Surface_Water"]["emiss_dict_g_s"].values()
+            for subdict in model_json["emiss_dict_g_s"].values()
             for value in subdict.values()
         )
 

@@ -56,6 +56,7 @@ class ModelRequest_emission_fraction(BaseModel):
     base_model_id: str
     rate_constant_id: str
     interaction_matrix_id: str
+    processed_result_id :str
 
 class ModelResponse_emission_fraction(BaseModel):
     base_model_id: str
@@ -169,7 +170,8 @@ def calculate_emssison_fraction(request: ModelRequest_emission_fraction):
         base_model_id = request.base_model_id
         rate_constant_id = request.rate_constant_id
         interaction_matrix_id = request.interaction_matrix_id
-        base_model_json = model_json_collection.find_one({"_id":ObjectId(request.base_model_id)}) 
+        base_model_json = model_json_collection.find_one({"_id":ObjectId(request.base_model_id)})
+        processed_result = processed_result_collection.find_one({"_id":ObjectId(request.processed_result_id)})
         """Estimate emission fractions"""
         # For estimating the emission fractions we need to make emissions to targeted compartments.
 
@@ -265,7 +267,7 @@ def calculate_emssison_fraction(request: ModelRequest_emission_fraction):
             flow_estimation_new_models[dispersing_comp] = new_flow_estimation_doc
 
         
-        emission_fractions_mass_data = emission_fractions_calculations_json(processed_result_new_models,model_json_new_models,flow_estimation_new_models)
+        emission_fractions_mass_data = emission_fractions_calculations_json(base_model_json,processed_result, processed_result_new_models,model_json_new_models,flow_estimation_new_models)
 
         exposure_indicator_doc = exposure_indicator_collection.find_one({"model_id": request.base_model_id})
 
