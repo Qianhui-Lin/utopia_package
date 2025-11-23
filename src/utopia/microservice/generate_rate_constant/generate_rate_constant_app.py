@@ -169,3 +169,5 @@ async def generate_rate_constants(request: ModelRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# trigger workflow
