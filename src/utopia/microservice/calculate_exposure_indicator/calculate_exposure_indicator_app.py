@@ -14,6 +14,17 @@ from utopia.microservice.calculate_exposure_indicator.exposure_indicators_calcul
 from utopia.microservice.calculate_exposure_indicator.emission_fractions_calculation_json import *
 
 
+
+if os.getenv("IN_DOCKER"):
+    BASE_URL_SOLVE_STEADY = "http://solve-steady-state:8006"
+    BASE_URL_ESTIMATE_FLOW = "http://estimate-flow:8007"
+    BASE_URL_PROCESS_RESULT = "http://process-result:8008"
+
+else:
+    BASE_URL_SOLVE_STEADY = "http://localhost:8006"
+    BASE_URL_ESTIMATE_FLOW =  "http://localhost:8007"
+    BASE_URL_PROCESS_RESULT = "http://localhost:8008"
+
 app = FastAPI(title="Exposure Indicator Calculating Service", version="1.0.0")
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/") 
@@ -216,8 +227,15 @@ def calculate_emssison_fraction(request: ModelRequest_emission_fraction):
             # Generate new dictionaries moving emission to each dispersing compartment and run the model
             new_model_id_dict[dispersing_comp] = new_model_id
 
+            # solve_steady_state_res = requests.post(
+            #     "http://localhost:8006/solve_steady_state",
+            #     json = {
+            #         "model_id": str(new_model_id),
+            #         "interaction_matrix_id": interaction_matrix_id
+            #     }
+            # )
             solve_steady_state_res = requests.post(
-                "http://localhost:8006/solve_steady_state",
+                f"{BASE_URL_SOLVE_STEADY}/solve_steady_state",
                 json = {
                     "model_id": str(new_model_id),
                     "interaction_matrix_id": interaction_matrix_id
@@ -227,8 +245,17 @@ def calculate_emssison_fraction(request: ModelRequest_emission_fraction):
                 print("Response:", solve_steady_state_res.json())
             else:
                 print("Error:", solve_steady_state_res.status_code, solve_steady_state_res.text)    
+            # flow_estimation_res = requests.post(
+            #     "http://localhost:8007/estimate_flow",
+            #     json = {
+            #         "model_id": str(new_model_id),
+            #         "rate_constant_id": rate_constant_id,
+            #         "particle_state_id":solve_steady_state_res.json()["particle_state_id"],
+            #         "flow_id": solve_steady_state_res.json()["flow_id"]
+            #     }
+            # )
             flow_estimation_res = requests.post(
-                "http://localhost:8007/estimate_flow",
+                f"{BASE_URL_ESTIMATE_FLOW}/estimate_flow",
                 json = {
                     "model_id": str(new_model_id),
                     "rate_constant_id": rate_constant_id,
@@ -241,8 +268,19 @@ def calculate_emssison_fraction(request: ModelRequest_emission_fraction):
             else:
                 print("Error:", flow_estimation_res.status_code, flow_estimation_res.text)
 
+            # process_result_res = requests.post(
+            #     "http://localhost:8008/process_result",
+            #     json = {
+            #         "model_id": str(new_model_id),
+            #         "result_id": solve_steady_state_res.json()["result_id"],
+            #         "rate_constant_id": rate_constant_id,
+            #         "interaction_matrix_id": interaction_matrix_id,
+            #         "particle_state_id":solve_steady_state_res.json()["particle_state_id"],
+            #         "flow_estimation_id": flow_estimation_res.json()["flow_estimation_id"]
+            #     }
+            # )
             process_result_res = requests.post(
-                "http://localhost:8008/process_result",
+                f"{BASE_URL_PROCESS_RESULT}/process_result",
                 json = {
                     "model_id": str(new_model_id),
                     "result_id": solve_steady_state_res.json()["result_id"],

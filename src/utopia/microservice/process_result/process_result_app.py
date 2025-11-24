@@ -13,6 +13,13 @@ from bson import ObjectId
 from utopia.microservice.process_result.process_result_function import *
 from utopia.microservice.process_result.extract_results_by_compartment_function import *
 
+
+if os.getenv("IN_DOCKER"):
+    BASE_URL_GEN_INT = "http://generate-interaction-matrix:8005"
+else:
+    BASE_URL_GEN_INT = "http://localhost:8005"
+
+
 app = FastAPI(title="Results Processor Service", version="1.0.0")
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/") 
@@ -98,7 +105,7 @@ def process_result(request: ModelRequest):
                 "interaction_matrix_id":request.interaction_matrix_id
         }
         
-        interaction_matrix_dict_res = requests.post("http://localhost:8005/generate_interaction_matrix_dict", json = interaction_data)
+        interaction_matrix_dict_res = requests.post(f"{BASE_URL_GEN_INT}/generate_interaction_matrix_dict", json = interaction_data)
 
         #interaction_matrix_dict_res = requests.post("http://generate-interaction-matrix:8005/generate_interaction_matrix_dict", json = interaction_data)
         

@@ -7,6 +7,14 @@ from utopia.globalConstants import *
 from utopia.helpers import generate_fsd_matrix
 from utopia.microservice.generate_object.particulate_classes_json import *
 
+import os
+
+if os.getenv("IN_DOCKER"):
+    BASE_URL_GEN_OBJ = "http://generate-object:8002"
+else:
+    BASE_URL_GEN_OBJ = "http://localhost:8002"
+
+
 def get_compartment_for_particle(particle, model_json):
     """
     Returns the compartment dictionary from dict_comp corresponding to the particle's Pcompartment_Cname.
@@ -389,9 +397,9 @@ def heteroaggregation(particle, model_json):
             "concNum_part_L": 0
 
         } 
-        # response = requests.post("http://generate-object:8002/calc_numConc_json", json=particulate_data)
+        response = requests.post(f"{BASE_URL_GEN_OBJ}/calc_numConc_json", json=particulate_data)
 
-        response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
+        # response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
         # Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL,concNum_part_L=0)
         
         # SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
@@ -490,9 +498,9 @@ def heteroaggregate_breackup(particle, model_json):
             "concNum_part_L": 0
 
         } 
-        #response = requests.post("http://generate-object:8002/calc_numConc_json", json=particulate_data)
+        response = requests.post(f"{BASE_URL_GEN_OBJ}/calc_numConc_json", json=particulate_data)
 
-        response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
+        # response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
         #Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL, concNum_part_L=0)
         SPM_concNum_part_m3 = response.json()["concNum_part_m3"]
         # SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
@@ -511,9 +519,9 @@ def heteroaggregate_breackup(particle, model_json):
         } 
 
         #Particulates.calc_numConc_json(model_json["spm"],concMass_mg_L=SPM_mgL, concNum_part_L=0)
-        #response = requests.post("http://generate-object:8002/calc_numConc_json", json=particulate_data)
+        response = requests.post(f"{BASE_URL_GEN_OBJ}/calc_numConc_json", json=particulate_data)
 
-        response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
+        # response = requests.post("http://localhost:8002/calc_numConc_json", json = particulate_data)
         
         #SPM_concNum_part_m3 = model_json["spm"]["concNum_part_m3"]
 
