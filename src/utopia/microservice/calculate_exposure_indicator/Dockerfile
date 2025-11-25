@@ -44,4 +44,4 @@ EXPOSE 8011
 
 
 # Set the default command 
-CMD ["uvicorn", "utopia.microservice.calculate_exposure_indicator_app:app", "--host", "0.0.0.0", "--port", "8011"]
+CMD ["uvicorn", "utopia.microservice.calculate_exposure_indicator.calculate_exposure_indicator_app:app", "--host", "0.0.0.0", "--port", "8011"]
