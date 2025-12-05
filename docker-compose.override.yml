@@ -176,5 +176,42 @@ services:
     command:
       uvicorn utopia.microservice.plot_fraction_distribution.plot_fraction_distribution_app:app --host 0.0.0.0 --port 8009 --reload
 
+  plot-compartment-distribution:
+    build:
+      context: .
+      dockerfile: src/utopia/microservice/plot_compartment_distribution/Dockerfile
+    env_file:
+        - .env
+    container_name: plot-compartment-distribution-service
+    depends_on:
+      - mongodb
+      - process-result
+    ports:
+      - "8010:8010"
+      # Development only: mount local code so you can edit and auto-reload
+    volumes:
+      - ./src:/app/src
+    command:
+      uvicorn utopia.microservice.plot_fraction_distribution.plot_fraction_distribution_app:app --host 0.0.0.0 --port 8010 --reload
+
+  calculate-exposure-indicator:
+    build:
+      context: .
+      dockerfile: src/utopia/microservice/calculate_exposure_indicator/Dockerfile
+    env_file:
+        - .env
+    container_name: calculate-exposure-indicator-service
+    depends_on:
+      - mongodb
+      - process-result
+    ports:
+      - "8011:8011"
+      # Development only: mount local code so you can edit and auto-reload
+    volumes:
+      - ./src:/app/src
+    command:
+      uvicorn utopia.microservice.calculate_exposure_indicator.calculate_exposure_indicator_app:app --host 0.0.0.0 --port 8011 --reload
+
+
 volumes:
   mongo_data:

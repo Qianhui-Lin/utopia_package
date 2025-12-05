@@ -111,6 +111,27 @@ services:
     ports:
       - "8009:8009"
 
+  plot-compartment-distribution:
+    image: linqianhui/plot-compartment-distribution:${IMAGE_TAG}
+    env_file:
+      - .env
+    container_name: plot-compartment-distribution-service
+    depends_on:
+      - mongodb
+      - process-result
+    ports:
+      - "8010:8010"
+
+  calculate-exposure-indicator:
+    image: linqianhui/calculate-exposure-indicator:${IMAGE_TAG}
+    env_file:
+      - .env
+    container_name: calculate-exposure-indicator-service
+    depends_on:
+      - mongodb
+      - process-result
+    ports:
+      - "8011:8011"
 
 volumes:
   mongo_data:
