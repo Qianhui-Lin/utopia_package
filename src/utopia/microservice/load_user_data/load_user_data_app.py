@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Any, Dict
+from typing import Any, Dict, List
 import pymongo
 import os
 # from utopia.utopia import utopiaModel
@@ -25,6 +25,9 @@ input_collection = db[INPUT_COLLECTION]
 class DataInput(BaseModel):
     data: Dict[str, Any]
 
+class BatchInput(BaseModel):
+    data_list: List[Dict[str, Any]]
+
 @app.post("/input")
 def submit_input(data: DataInput):
     try:
@@ -32,6 +35,24 @@ def submit_input(data: DataInput):
         return {"status": "success", "input_id": str(inserted.inserted_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/input/batch")
+def submit_input_batch(payload: BatchInput):
+    try:
+        # Bulk insert many documents
+        result = input_collection.insert_many(payload.data_list)
+        input_ids = [str(_id) for _id in result.inserted_ids]
+
+        return {
+            "status": "success",
+            "count": len(input_ids),
+            "input_ids": input_ids
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.post("/config")
 def submit_config(data: DataInput):

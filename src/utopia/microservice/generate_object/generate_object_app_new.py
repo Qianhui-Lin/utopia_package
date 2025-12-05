@@ -1,3 +1,4 @@
+from functools import partial
 import pymongo
 import math
 import pandas as pd
@@ -10,6 +11,8 @@ from utopia.microservice.generate_object.box_class_json import *
 from utopia.microservice.generate_object.particulate_classes_json import *
 from utopia.microservice.generate_object.compartment_classes_json import *
 from utopia.microservice.generate_object.readinputs_from_csv_json import *
+from concurrent.futures import ProcessPoolExecutor
+from typing import Any, Dict, List
 import json
 import copy
 from fastapi import FastAPI, HTTPException
@@ -45,6 +48,10 @@ class ParticulateData(BaseModel):
     concMass_mg_L: float
     concNum_part_L: float
 
+class BatchGenerateRequest(BaseModel):
+    config_id: str
+    input_ids: List[str]
+    
 
 def load_csv_column(filename, column_name):
     """Load a column from input CSV file: Reads a single column from a CSV file and returns it as a list"""
@@ -472,6 +479,50 @@ def generate_objects_json(model_json):
         particles_properties_df_dict
     )
 
+def generate_one_model_json(input_id, config_id):
+    client = None
+    try:
+        client = pymongo.MongoClient(MONGO_URI)
+        db = client[DB_NAME]
+        config_collection = db[CONFIG_COLLECTION]
+        input_collection = db[INPUT_COLLECTION]
+        model_json_collection = db[MODEL_COLLECTION]
+        config_doc = config_collection.find_one({"_id": ObjectId(config_id)})
+        if config_doc is None:
+            raise ValueError(f"Config {config_id} not found")
+        input_doc = input_collection.find_one({"_id": ObjectId(input_id)})
+        if input_doc is None:
+            raise ValueError(f"Input {input_id} not found")
+        model_id,model_json = create_model_json(input_doc = input_doc, config_doc = config_doc)
+        generate_coding_dictionaries_json(model_id)
+        (
+            system_particle_object_list_json,
+            SpeciesList,
+            spm_dict,
+            dict_comp,
+            particles_properties_df_dict
+        ) = generate_objects_json(model_json)
+        model_json_collection.find_one_and_update(
+                {"_id": model_id}, 
+                {
+                    "$set": {
+                        "system_particle_object_list": system_particle_object_list_json,
+                        "SpeciesList": SpeciesList,
+                        "spm": spm_dict,
+                        "dict_comp": dict_comp,
+                        "particles_properties_df": particles_properties_df_dict
+                    }
+                },
+                upsert=True
+            ) 
+        return str(model_id)
+    except Exception as e:
+        print(f"Error generating model for input_id {input_id}: {e}")
+        return None
+    finally:
+        if client:
+            client.close()
+
 
 @app.post("/generate_object")
 def generate_object(user_input: UserInput):
@@ -506,6 +557,18 @@ def generate_object(user_input: UserInput):
         return {"status": "success", "model_id": str(model_id)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+@app.post("/generate_object/batch")
+def generate_object_batch(req: BatchGenerateRequest):
+    config_id = req.config_id  # Pass the ID, not the document
+    
+    with ProcessPoolExecutor(max_workers=4) as executor:
+        # Use partial instead of lambda
+        worker_fn = partial(generate_one_model_json, config_id=config_id)
+        model_ids = list(executor.map(worker_fn, req.input_ids))
+
+    return {"status": "success", "model_ids": model_ids}
 
 @app.post("/init_model_collections")
 def initialize():
