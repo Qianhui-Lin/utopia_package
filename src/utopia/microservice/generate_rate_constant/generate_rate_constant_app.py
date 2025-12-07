@@ -6,6 +6,11 @@ import os
 from bson import ObjectId
 from utopia.globalConstants import *
 import utopia.microservice.generate_rate_constant.RC_generator_json_ms as RC_generator
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import logging
+logger = logging.getLogger(__name__)
+
+MAX_WORKERS = int(os.getenv("RC_MAX_WORKERS", "4"))
 
 app = FastAPI(title="Rate Constants Generator Service", version="1.0.0")
 
@@ -36,6 +41,9 @@ class ModelResponse(BaseModel):
     model_id: str
     rate_constant_id: str
     status: str = "updated"
+
+class RateConstantBatchRequest(BaseModel):
+    model_ids: List[str]
 
 
 def get_compartment_for_particle(particle, dict_comp):
@@ -114,7 +122,73 @@ def generate_rate_constants_json(model_id):
     
     return model_id,model_json,rate_constant_id
 
+def compute_rate_constants_for_model(model_id: str) -> dict:
+    """
+    Generate rate constants for all particles in a single model.
+    Returns a dict: {"model_id": ..., "system_particle_rate_constants": [...]}
+    Intended to be called from a worker (thread/process).
+    """
+    client = pymongo.MongoClient(MONGO_URI)
+    db = client[DB_NAME]
+    model_json_collection = db["model_json"]
+    try:
+        model_json = model_json_collection.find_one({"_id": ObjectId(model_id)})
+        if model_json is None:
+            # Let the caller decide how to handle this
+            raise ValueError(f"model_id {model_id} not found")
 
+        dict_comp = model_json["dict_comp"]
+        system_particle_rate_constants = []
+
+        for particle in model_json["system_particle_object_list"]:
+            try:
+                cname = particle["Pcompartment_Cname"]
+                compartment = dict_comp[cname]
+                processes = compartment["processess"]
+
+                # Initialise RC dict
+                rc_dict = {f"k_{p}": None for p in processes}
+
+                for process_key in rc_dict:
+                    proc = process_key[2:]   # remove "k_"
+                    if hasattr(RC_generator, proc):
+                        rc_dict[process_key] = getattr(RC_generator, proc)(
+                            particle, model_json
+                        )
+                    else:
+                        rc_dict[process_key] = None
+
+                system_particle_rate_constants.append({
+                    "Pcode": particle["Pcode"],
+                    "RateConstants": rc_dict
+                })
+
+            except Exception as e:
+                # Log and continue with next particle
+                print(f"[RC ERROR] model={model_id}, particle={particle.get('Pname','<unknown>')}: {e}")
+                continue
+
+        # Build the document to save
+        rc_data = {
+            "model_id": model_id,
+            "system_particle_rate_constant_list": system_particle_rate_constants,
+        }        
+        # Upsert into DB
+        result = rate_constant_collection.update_one(
+            {"model_id": model_id},
+            {"$set": rc_data},
+            upsert=True
+        )
+        if result.upserted_id is not None:
+            rate_constant_id = str(result.upserted_id)
+        else:
+            print("No upserted_id, fetching existing document _id")
+        return {
+            "model_id": model_id,
+            "rate_constant_id": rate_constant_id
+        }
+    finally:
+        client.close()
 
 @app.get("/")
 async def root():
@@ -170,4 +244,44 @@ async def generate_rate_constants(request: ModelRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-# trigger workflow
+
+@app.post("/generate_rate_constants/batch")
+def generate_rate_constants_batch(req: RateConstantBatchRequest):
+    """
+    Generate rate constants for a list of model_ids.
+    Uses a process pool so models are processed in parallel, not one by one.
+    """
+    model_ids = req.model_ids
+    if not model_ids:
+        return {"status": "success", "count": 0, "results": []}
+
+    results = []
+    errors = []
+
+    # Run models in parallel
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_mid = {
+            executor.submit(compute_rate_constants_for_model, mid): mid
+            for mid in model_ids
+        }
+
+        for future in as_completed(future_to_mid):
+            mid = future_to_mid[future]
+            try:
+                res = future.result()
+                results.append(res)
+            except Exception as e:
+                # Log per-model error but don’t kill the whole batch
+                print(f"[RC BATCH ERROR] model_id={mid}: {e}")
+                errors.append({"model_id": mid, "error": str(e)})
+
+    response = {
+        "status": "success",
+        "count": len(results),
+        "results": results,
+    }
+
+    if errors:
+        response["errors"] = errors
+
+    return response
