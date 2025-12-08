@@ -24,7 +24,7 @@ RATE_CONSTANT_COLLECTION = "rate_constant"
 PARTICLE_STATE_COLLECTION = "particle_state"
 FLOW_ESTIMATION_COLLECTION = "flow_estimation"
 PROCESSED_RESULT_COLLECTION = "processed_result"
-EXPOSURE_INDICATOR_COLLECTION = "exposure_inidcator"
+EXPOSURE_INDICATOR_COLLECTION = "exposure_indicator"
 
 client = pymongo.MongoClient(MONGO_URI)
 db = client[DB_NAME]
