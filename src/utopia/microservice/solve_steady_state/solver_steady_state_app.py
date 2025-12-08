@@ -7,9 +7,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import pymongo
 import os
+from typing import Dict, List, Any, Optional
 from bson import ObjectId
 # from utopia.preprocessing.RC_generator_json import get_compartment_for_particle
-
+from concurrent.futures import ProcessPoolExecutor
 
 app = FastAPI(title="Steady State Solver Service", version="1.0.0")
 
@@ -44,6 +45,28 @@ class ModelResponse(BaseModel):
     particle_state_id: str
     status: str = "result, flow, and particle states generated and saved to mongodb"
 
+
+class BatchModelRequest(BaseModel):
+    items: List[ModelRequest]
+
+class SingleResult(BaseModel):
+    model_id: str
+    result_id: str | None = None
+    flow_id: str | None = None
+    particle_state_id: str | None = None
+    status: str
+
+class BatchModelResponse(BaseModel):
+    total: int
+    successful: int
+    failed: int
+    results: List[SingleResult]
+
+def init_worker():
+    """Initialize MongoDB connection for this worker process"""
+    global worker_db
+    client = pymongo.MongoClient(MONGO_URI)
+    worker_db = client[DB_NAME]
 
 def solver_SS_json_app(model_json,interaction_documentation):
 
@@ -225,6 +248,82 @@ def solve_ODES_SS_app(
 
     return R, PartMass_t0, system_particle_object_list
 
+def run_single_model(model_id: str, interaction_id: str) -> SingleResult:
+    try:
+        model_json = worker_db["model_json"].find_one({'_id': ObjectId(model_id)})
+        if model_json is None:
+            return SingleResult(
+                model_id=model_id,
+                status=f"failed: model_id {model_id} not found"
+            )
+
+        interaction_documentation = worker_db["interaction"].find_one({'_id': ObjectId(interaction_id)})
+        if interaction_documentation is None:
+            return SingleResult(
+                model_id=model_id,
+                status=f"failed: interaction_matrix_id {interaction_id} not found"
+            )
+
+        (R, PartMass_t0, input_flows_g_s, input_flows_num_s,
+         system_particle_object_list_updated) = solver_SS_json_app(model_json, interaction_documentation)
+
+        # Negative value warning (unchanged from your logic)
+        for i, idx in zip(R["mass_g"], R.index):
+            if i < 0:
+                print("negative values in the solution for " + idx)
+
+        # Build particle state list
+        system_particle_state_list = []
+        for p in system_particle_object_list_updated:
+            system_particle_state_list.append({
+                'Pcode': p['Pcode'],
+                'Pmass_g_t0': p['Pmass_g_t0'],
+                'Pmass_g_SS': p['Pmass_g_SS'],
+                'Pnum_SS': p['Pnum_SS'],
+                'C_g_m3_SS': p['C_g_m3_SS'],
+                'C_num_m3_SS': p['C_num_m3_SS']
+            })
+
+        particle_state_doc = {
+            'model_id': model_id,
+            'interaction_matrix_id': interaction_id,
+            'system_particle_state_list': system_particle_state_list,
+        }
+        particle_state_insert = worker_db["particle_state"].insert_one(particle_state_doc)
+
+        # Save result
+        result_insert = worker_db["result"].insert_one({
+            'model_id': model_id,
+            'result': R.to_dict('list'),
+            'index': list(R.index)
+        })
+
+        flow_insert = worker_db['flow'].insert_one({
+            'model_id': model_id,
+            'input_flows_g_s': input_flows_g_s,
+            'input_flows_num_s': input_flows_num_s
+        })
+
+        return SingleResult(
+            model_id=model_id,
+            result_id=str(result_insert.inserted_id),
+            flow_id=str(flow_insert.inserted_id),
+            particle_state_id=str(particle_state_insert.inserted_id),
+            status="success"
+        )
+
+    except Exception as e:
+        return SingleResult(
+            model_id=model_id,
+            status=f"failed: {str(e)}"
+        )
+
+def solve_single_model_task(args):
+    model_id, interaction_id = args
+    return run_single_model(model_id, interaction_id)
+
+
+
 @app.get("/")
 def root():
     """Health check endpoint"""
@@ -325,3 +424,23 @@ def solve_steady_state(request: ModelRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
         
 
+@app.post("/solve_steady_state/batch", response_model=BatchModelResponse)
+def solve_steady_state_batch_parallel(req: BatchModelRequest):
+
+    tasks = [(item.model_id, item.interaction_matrix_id) for item in req.items]
+
+    results = []
+    # Use all available CPU cores
+    with ProcessPoolExecutor(max_workers=8,initializer=init_worker) as executor:
+        for result in executor.map(solve_single_model_task, tasks):
+            results.append(result)
+
+    successful = sum(1 for r in results if r.status == "success")
+    failed = len(results) - successful
+
+    return BatchModelResponse(
+        total=len(results),
+        successful=successful,
+        failed=failed,
+        results=results
+    )

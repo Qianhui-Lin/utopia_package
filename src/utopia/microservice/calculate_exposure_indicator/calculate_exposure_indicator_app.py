@@ -1,3 +1,4 @@
+import asyncio
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
@@ -10,6 +11,8 @@ from pydantic import BaseModel
 import pymongo
 import os
 from bson import ObjectId
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from contextlib import asynccontextmanager
 from utopia.microservice.calculate_exposure_indicator.exposure_indicators_calculation_json import *
 from utopia.microservice.calculate_exposure_indicator.emission_fractions_calculation_json import *
 
@@ -25,8 +28,6 @@ else:
     BASE_URL_ESTIMATE_FLOW =  "http://localhost:8007"
     BASE_URL_PROCESS_RESULT = "http://localhost:8008"
 
-app = FastAPI(title="Exposure Indicator Calculating Service", version="1.0.0")
-
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/") 
 DB_NAME = os.getenv("DB_NAME", "utopia")
 MODEL_COLLECTION = "model_json"
@@ -37,7 +38,41 @@ RATE_CONSTANT_COLLECTION = "rate_constant"
 PARTICLE_STATE_COLLECTION = "particle_state"
 FLOW_ESTIMATION_COLLECTION = "flow_estimation"
 PROCESSED_RESULT_COLLECTION = "processed_result"
-EXPOSURE_INDICATOR_COLLECTION = "exposure_inidcator"
+EXPOSURE_INDICATOR_COLLECTION = "exposure_indicator"
+
+MAX_WORKERS = int(os.getenv("MAX_WORKERS", "4"))
+
+solver_executor: ProcessPoolExecutor | None = None
+worker_db = None
+
+def init_worker():
+    """
+    Called once in each worker process.
+    Creates a MongoDB connection for that process.
+    """
+    global worker_db
+    client = pymongo.MongoClient(MONGO_URI)
+    worker_db = client[DB_NAME]
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global solver_executor
+    
+    solver_executor = ProcessPoolExecutor(
+        max_workers=MAX_WORKERS,
+        initializer=init_worker
+    )
+    print(f"[interaction] Started ProcessPoolExecutor with {MAX_WORKERS} workers")
+    
+    yield
+    
+    solver_executor.shutdown(wait=True)
+    print("[exposure indicator] ProcessPoolExecutor shut down")
+
+
+app = FastAPI(lifespan=lifespan, title="Exposure Indicator Calculating Service", version="1.0.0")
+
+
 
 client = pymongo.MongoClient(MONGO_URI)
 db = client[DB_NAME]
@@ -75,59 +110,129 @@ class ModelResponse_emission_fraction(BaseModel):
     emission_fraction_id :str
     status: str = "emission fraction calculated and saved to MongoDB"
 
+class ExposureIndicatorBatchRequest(BaseModel):
+    items: list[ModelRequest]   # reuse your existing ModelRequest
+
+
+class SingleExposureIndicatorResult(BaseModel):
+    model_id: str
+    exposure_indicator_id: str | None = None
+    status: str
+
+
+class ExposureIndicatorBatchResponse(BaseModel):
+    count: int
+    successful: int
+    failed: int
+    results: list[SingleExposureIndicatorResult]
+
+def run_single_exposure_indicator(req: ModelRequest) -> SingleExposureIndicatorResult:
+    try:
+        model_id = req.model_id
+
+        # Fetch all documents using worker_db
+        model_json = worker_db[MODEL_COLLECTION].find_one({"_id": ObjectId(req.model_id)})
+        flow_estimation = worker_db[FLOW_ESTIMATION_COLLECTION].find_one({"_id": ObjectId(req.flow_estimation_id)})
+        result_doc = worker_db[PROCESSED_RESULT_COLLECTION].find_one({"_id": ObjectId(req.processed_result_id)})
+        rate_constant_doc = worker_db[RATE_CONSTANT_COLLECTION].find_one({"_id": ObjectId(req.rate_constant_id)})
+        particle_state_doc = worker_db[PARTICLE_STATE_COLLECTION].find_one({"_id": ObjectId(req.particle_state_id)})
+
+        required_docs = {
+            "model_json": model_json,
+            "flow_estimation": flow_estimation,
+            "result_doc": result_doc,
+            "rate_constant_doc": rate_constant_doc,
+            "particle_state_doc": particle_state_doc,
+        }
+
+        missing_docs = [name for name, doc in required_docs.items() if doc is None]
+
+        if missing_docs:
+            return SingleExposureIndicatorResult(
+                model_id=model_id,
+                status=f"failed: missing documents - {', '.join(missing_docs)}"
+            )
+
+        # Pure data transformation - same function works everywhere
+        system_particle_object_list_merged = get_system_particle_object_list_merged(
+            model_json, rate_constant_doc, particle_state_doc
+        )
+
+        result_df = pd.DataFrame(result_doc["processed_result"])
+        overall_exposure_indicators, size_fraction_indicators = Exposure_indicators_calculation_json(
+            model_json, flow_estimation, result_df, system_particle_object_list_merged
+        )
+
+        exposure_doc = {
+            "model_id": model_id,
+            "overall_exposure_indicators": overall_exposure_indicators.to_dict(orient="records"),
+            "size_fraction_indicators": size_fraction_indicators.to_dict(orient="records"),
+        }
+        insert_res = worker_db[EXPOSURE_INDICATOR_COLLECTION].insert_one(exposure_doc)
+
+        return SingleExposureIndicatorResult(
+            model_id=model_id,
+            exposure_indicator_id=str(insert_res.inserted_id),
+            status="success"
+        )
+
+    except Exception as e:
+        return SingleExposureIndicatorResult(
+            model_id=req.model_id,
+            status=f"failed: {str(e)}"
+        )
+
+
 @app.get("/")
 def root():
     """Health check endpoint"""
     return {"message": "Exposure Indicator Calculating Service is running", "status": "healthy"}
 
-def get_system_particle_object_list_merged(model_id, rate_constant_id, particle_state_id):
-    model_json = model_json_collection.find_one({'_id':ObjectId(model_id)})
-        # Fetch rate constants
-    rate_constant_doc = rate_constant_collection.find_one({
-            '_id': ObjectId(rate_constant_id)
-        })
-        # Fetch particle states
-    particle_state_doc = particle_state_collection.find_one({
-            '_id': ObjectId(particle_state_id)
-        })
-
-    if not rate_constant_doc or not particle_state_doc:
-            raise ValueError("Required particle data not found in collections")
-        
-        # Create a mapping of Pcode to rate constants
+def get_system_particle_object_list_merged(model_json: dict, rate_constant_doc: dict, particle_state_doc: dict) -> list:
+    """
+    Merge particle state with rate constants and compartment info.
+    
+    Args:
+        model_json: The model document
+        rate_constant_doc: The rate constant document
+        particle_state_doc: The particle state document
+    
+    Returns:
+        List of merged particle objects
+    """
+    # Create a mapping of Pcode to rate constants
     rate_constants_map = {
-            p['Pcode']: p['RateConstants'] 
-            for p in rate_constant_doc.get('system_particle_rate_constant_list', [])
-        }
+        p['Pcode']: p['RateConstants'] 
+        for p in rate_constant_doc.get('system_particle_rate_constant_list', [])
+    }
 
-        # Create a mapping of Pcode to Pcompartment_Cname from the original model_json
+    # Create a mapping of Pcode to Pcompartment_Cname from the original model_json
     pcode_to_compartment = {}
     if 'system_particle_object_list' in model_json:
-            for original_particle in model_json['system_particle_object_list']:
-                if 'Pcode' in original_particle and 'Pcompartment_Cname' in original_particle:
-                    pcode_to_compartment[original_particle['Pcode']] = original_particle['Pcompartment_Cname']
+        for original_particle in model_json['system_particle_object_list']:
+            if 'Pcode' in original_particle and 'Pcompartment_Cname' in original_particle:
+                pcode_to_compartment[original_particle['Pcode']] = original_particle['Pcompartment_Cname']
 
-        # Merge particle state with rate constants and compartment info
+    # Merge particle state with rate constants and compartment info
     system_particle_object_list = []
     for particle_state in particle_state_doc.get('system_particle_state_list', []):
-            merged_particle = particle_state.copy()
-            pcode = particle_state['Pcode']
-            
-            # Add rate constants if available
-            if pcode in rate_constants_map:
-                merged_particle['RateConstants'] = rate_constants_map[pcode]
-            else:
-                merged_particle['RateConstants'] = {}
-            
-            # Add Pcompartment_Cname from the original model_json mapping
-            if pcode in pcode_to_compartment:
-                merged_particle['Pcompartment_Cname'] = pcode_to_compartment[pcode]
-            else:
-                # If not found in mapping, you might need to handle this case
-                # Perhaps log a warning or use a default compartment
-                print(f"Warning: No compartment found for particle {pcode}")
-            
-            system_particle_object_list.append(merged_particle)
+        merged_particle = particle_state.copy()
+        pcode = particle_state['Pcode']
+        
+        # Add rate constants if available
+        if pcode in rate_constants_map:
+            merged_particle['RateConstants'] = rate_constants_map[pcode]
+        else:
+            merged_particle['RateConstants'] = {}
+        
+        # Add Pcompartment_Cname from the original model_json mapping
+        if pcode in pcode_to_compartment:
+            merged_particle['Pcompartment_Cname'] = pcode_to_compartment[pcode]
+        else:
+            print(f"Warning: No compartment found for particle {pcode}")
+        
+        system_particle_object_list.append(merged_particle)
+    
     return system_particle_object_list
 
 
@@ -144,15 +249,22 @@ def init_exposure_indicator_collection():
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
     
 @app.post("/calculate_exposure_indicator",response_model = ModelResponse)
-def calcuate_exposure_inidicator(request: ModelRequest):
+def calculate_exposure_indicator(request: ModelRequest):
     try:
-        model_id = request.model_id
-        rate_constant_id = request.rate_constant_id
-        particle_state_id = request.particle_state_id
-        system_particle_object_list_merged = get_system_particle_object_list_merged(model_id, rate_constant_id, particle_state_id)
-        model_json = model_json_collection.find_one({"_id":ObjectId(request.model_id)})
-        flow_estimation = flow_estimation_collection.find_one({"_id":ObjectId(request.flow_estimation_id)})
-        result_doc = processed_result_collection.find_one({"_id":ObjectId(request.processed_result_id)})
+        # Fetch all documents first
+        model_json = model_json_collection.find_one({"_id": ObjectId(request.model_id)})
+        flow_estimation = flow_estimation_collection.find_one({"_id": ObjectId(request.flow_estimation_id)})
+        result_doc = processed_result_collection.find_one({"_id": ObjectId(request.processed_result_id)})
+        rate_constant_doc = rate_constant_collection.find_one({"_id": ObjectId(request.rate_constant_id)})
+        particle_state_doc = particle_state_collection.find_one({"_id": ObjectId(request.particle_state_id)})
+
+        if not all([model_json, flow_estimation, result_doc, rate_constant_doc, particle_state_doc]):
+            raise HTTPException(status_code=404, detail="One or more required documents not found")
+
+        system_particle_object_list_merged = get_system_particle_object_list_merged(
+            model_json, rate_constant_doc, particle_state_doc
+        )
+
         result = pd.DataFrame(result_doc["processed_result"])
         overall_exposure_indicators, size_fraction_indicators = Exposure_indicators_calculation_json(model_json,flow_estimation,result,system_particle_object_list_merged)
 
@@ -173,6 +285,36 @@ def calcuate_exposure_inidicator(request: ModelRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    
+
+@app.post("/calculate_exposure_indicator/batch", response_model=ExposureIndicatorBatchResponse)
+async def calculate_exposure_indicator_batch(req: ExposureIndicatorBatchRequest):
+    if solver_executor is None:
+        raise HTTPException(status_code=500, detail="Executor not initialized")
+
+    # Submit tasks in parallel
+    tasks = [
+        asyncio.get_running_loop().run_in_executor(
+            solver_executor,
+            run_single_exposure_indicator,
+            item
+        )
+        for item in req.items
+    ]
+
+    # Collect results
+    results = await asyncio.gather(*tasks)
+
+    successful = sum(1 for r in results if r.status == "success")
+    failed = len(results) - successful
+
+    return ExposureIndicatorBatchResponse(
+        count=len(results), 
+        successful=successful,
+        failed=failed,
+        results=results
+    )
+
     
 @app.post("/calculate_emssison_fraction",response_model = ModelResponse_emission_fraction)
 def calculate_emssison_fraction(request: ModelRequest_emission_fraction):

@@ -6,11 +6,45 @@ import pandas as pd
 from utopia.helpers import *
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import Dict, List, Any, Optional
 import pymongo
 import os
+from contextlib import asynccontextmanager
+from concurrent.futures import ProcessPoolExecutor
 from bson import ObjectId
 
-app = FastAPI(title="Flow Estimator Service", version="1.0.0")
+worker_db = None
+solver_executor: ProcessPoolExecutor | None = None
+
+def init_worker():
+    """
+    Called once when each worker process starts.
+    Creates a MongoDB connection for that process.
+    """
+    global worker_db
+    
+    worker_client = pymongo.MongoClient(MONGO_URI)
+    worker_db = worker_client[DB_NAME]
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global solver_executor
+    
+    # Startup: create process pool with initialized workers
+    solver_executor = ProcessPoolExecutor(
+        max_workers=MAX_WORKERS,
+        initializer=init_worker
+    )
+    print(f"Started ProcessPoolExecutor with {MAX_WORKERS} workers")
+    
+    yield
+    
+    # Shutdown: clean up
+    solver_executor.shutdown(wait=True)
+    print("ProcessPoolExecutor shut down")
+
+
+app = FastAPI(lifespan=lifespan,title="Flow Estimator Service", version="1.0.0")
 
 #MONGO_URI = "mongodb://utopiauser:utopiapassword@localhost:27018/utopia?authSource=admin"
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/") 
@@ -23,6 +57,7 @@ FLOW_COLLECTION = "flow"
 RATE_CONSTANT_COLLECTION = "rate_constant"
 PARTICLE_STATE_COLLECTION = "particle_state"
 FLOW_ESTIMATION_COLLECTION = "flow_estimation"
+MAX_WORKERS = int(os.getenv("MAX_WORKERS", "4"))
 
 client = pymongo.MongoClient(MONGO_URI)
 db = client[DB_NAME]
@@ -44,20 +79,69 @@ class ModelResponse(BaseModel):
     flow_estimation_id: str
     status: str = "updated flow estimation"
 
-def estimate_flows_json_app(model_id, rate_constant_id, particle_state_id, flow_id):
-        model_json = model_json_collection.find_one({'_id':ObjectId(model_id)})
-        # Fetch rate constants
-        rate_constant_doc = rate_constant_collection.find_one({
-            '_id': ObjectId(rate_constant_id)
-        })
-        # Fetch particle states
-        particle_state_doc = particle_state_collection.find_one({
-            '_id': ObjectId(particle_state_id)
-        })
+class BatchFlowRequest(BaseModel):
+    items: List[ModelRequest]
 
-        if not rate_constant_doc or not particle_state_doc:
-            raise ValueError("Required particle data not found in collections")
-        
+class SingleFlowResult(BaseModel):
+    model_id: str
+    flow_estimation_id: str | None = None
+    status: str
+
+class BatchFlowResponse(BaseModel):
+    total: int
+    successful: int
+    failed: int
+    results: List[SingleFlowResult]
+
+def run_flow_estimation_in_process(
+    model_id: str,
+    rate_constant_id: str, 
+    particle_state_id: str,
+    flow_id: str
+) -> SingleFlowResult:
+    """Runs in worker process with its own MongoDB connection"""
+    try:
+        model_json = worker_db.model_json.find_one({'_id': ObjectId(model_id)})
+        if model_json is None:
+            return SingleFlowResult(model_id=model_id, status="failed: model not found")
+
+        rate_constant_doc = worker_db.rate_constant.find_one({'_id': ObjectId(rate_constant_id)})
+        if rate_constant_doc is None:
+            return SingleFlowResult(model_id=model_id, status="failed: rate_constant not found")
+
+        particle_state_doc = worker_db.particle_state.find_one({'_id': ObjectId(particle_state_id)})
+        if particle_state_doc is None:
+            return SingleFlowResult(model_id=model_id, status="failed: particle_state not found")
+
+        # Pure computation
+        flow_estimation_doc = estimate_flows_compute_json(
+            model_json=model_json,
+            rate_constant_doc=rate_constant_doc,
+            particle_state_doc=particle_state_doc,
+            flow_id=flow_id,
+            model_id=model_id,
+            rate_constant_id=rate_constant_id,
+            particle_state_id=particle_state_id
+        )
+
+        flow_estimation_doc_updated = generate_flows_dict_json(model_json, flow_estimation_doc)
+        flow_estimation_doc_to_insert = convert_dfs_in_flow(flow_estimation_doc_updated)
+
+        insert_result = worker_db.flow_estimation.insert_one(flow_estimation_doc_to_insert)
+
+        return SingleFlowResult(
+            model_id=model_id,
+            flow_estimation_id=str(insert_result.inserted_id),
+            status="success"
+        )
+
+    except Exception as e:
+        return SingleFlowResult(model_id=model_id, status=f"failed: {str(e)}")
+
+def flow_task(args):
+    return run_flow_estimation_in_process(*args)
+
+def estimate_flows_compute_json(model_json: dict, rate_constant_doc: dict, particle_state_doc: dict,flow_id: str, model_id: str,rate_constant_id: str,particle_state_id: str)-> dict:       
         # Create a mapping of Pcode to rate constants
         rate_constants_map = {
             p['Pcode']: p['RateConstants'] 
@@ -400,13 +484,28 @@ def init_flow_estimation_collection():
 @app.post("/estimate_flow",response_model = ModelResponse)
 def flow_estimation(request: ModelRequest):
     try:
-        flow_estimation_doc = estimate_flows_json_app(
+        model_json = model_json_collection.find_one({'_id': ObjectId(request.model_id)})
+        if model_json is None:
+            raise HTTPException(status_code=404, detail=f"model_id {request.model_id} not found")
+
+        rate_constant_doc = rate_constant_collection.find_one({'_id': ObjectId(request.rate_constant_id)})
+        if rate_constant_doc is None:
+            raise HTTPException(status_code=404, detail=f"rate_constant_id not found")
+
+        particle_state_doc = particle_state_collection.find_one({'_id': ObjectId(request.particle_state_id)})
+        if particle_state_doc is None:
+            raise HTTPException(status_code=404, detail=f"particle_state_id not found")
+                
+        flow_estimation_doc = estimate_flows_compute_json(
+            model_json=model_json,
+            rate_constant_doc=rate_constant_doc,
+            particle_state_doc=particle_state_doc,
+            flow_id=request.flow_id,
             model_id=request.model_id,
             rate_constant_id=request.rate_constant_id,
-            particle_state_id=request.particle_state_id,
-            flow_id=request.flow_id
+            particle_state_id=request.particle_state_id
         )
-        model_json = model_json_collection.find_one({'_id':ObjectId(request.model_id)})
+
         flow_estimation_doc_updated = generate_flows_dict_json(model_json,flow_estimation_doc)
         flow_estimation_doc_to_insert = convert_dfs_in_flow(flow_estimation_doc_updated)
         insert_result = flow_estimation_collection.insert_one(flow_estimation_doc_to_insert)
@@ -420,3 +519,24 @@ def flow_estimation(request: ModelRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+
+@app.post("/estimate_flow/batch", response_model=BatchFlowResponse)
+def flow_estimation_batch(req: BatchFlowRequest):
+    """Batch request - distributes to worker processes"""
+    tasks = [
+        (item.model_id, item.rate_constant_id, item.particle_state_id, item.flow_id)
+        for item in req.items
+    ]
+
+    results = list(solver_executor.map(flow_task, tasks))
+
+    successful = sum(1 for r in results if r.status == "success")
+
+    return BatchFlowResponse(
+        total=len(results),
+        successful=successful,
+        failed=len(results) - successful,
+        results=results
+    )

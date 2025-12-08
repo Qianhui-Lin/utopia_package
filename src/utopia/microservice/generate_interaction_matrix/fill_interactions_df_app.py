@@ -15,6 +15,15 @@ from contextlib import asynccontextmanager
 from utopia.microservice.generate_interaction_matrix.fillInteractions_fun_OOP_json_function import *
 from utopia.microservice.generate_interaction_matrix.fillInteractions_fun_OOP_json_dict_function import *
 
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+# testing locally
+# MONGO_URI = "mongodb://utopiauser:utopiapassword@localhost:27018/utopia?authSource=admin"
+DB_NAME = os.getenv("DB_NAME", "utopia")
+MODEL_COLLECTION = "model_json"
+INTERACTION_MATRIX_COLLECTION = "interaction"
+RATE_CONSTANT_COLLECTION = "rate_constant"
+MAX_WORKERS = int(os.getenv("MAX_WORKERS", "4"))
+
 solver_executor: ProcessPoolExecutor | None = None
 worker_db = None
 
@@ -45,15 +54,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan, title="Interaction Matrix Generator Service", version="1.0.0")
 
-
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-# testing locally
-# MONGO_URI = "mongodb://utopiauser:utopiapassword@localhost:27018/utopia?authSource=admin"
-DB_NAME = os.getenv("DB_NAME", "utopia")
-MODEL_COLLECTION = "model_json"
-INTERACTION_MATRIX_COLLECTION = "interaction"
-RATE_CONSTANT_COLLECTION = "rate_constant"
-MAX_WORKERS = int(os.getenv("MAX_WORKERS", "4"))
 
 client = pymongo.MongoClient(MONGO_URI)
 db = client[DB_NAME]
@@ -155,7 +155,7 @@ def generate_interaction_matrix(request: ModelRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/generate_interaction_matrix_dict",response_model = ModelResponse_dict)
-def generate_interaction_matrix(request: ModelRequest_dict):
+def generate_interaction_matrix_dict(request: ModelRequest_dict):
     try:
         model_id = ObjectId(request.model_id)
         rate_constant_id = ObjectId(request.rate_constant_id)
@@ -179,15 +179,21 @@ def generate_interaction_matrix(request: ModelRequest_dict):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
     
 
-@app.post("/generate_interaction_matrix/batch")
+@app.post("/generate_interaction_matrix/batch", response_model=InteractionMatrixBatchResponse)
 def generate_interaction_matrix_batch(req: InteractionMatrixBatchRequest):
+    """Batch endpoint using the shared solver_executor"""
+    
+    if solver_executor is None:
+        raise HTTPException(status_code=503, detail="ProcessPoolExecutor not initialized")
 
     # 1. Pre-fetch MongoDB objects (must happen in main process)
     jobs = []
     results: List[ModelResponse] = []
+    
     for item in req.items:
         m = model_json_collection.find_one({'_id': ObjectId(item.model_id)})
         r = rate_constant_collection.find_one({'_id': ObjectId(item.rate_constant_id)})
+        
         if not m:
             results.append(ModelResponse(
                 model_id=item.model_id,
@@ -203,38 +209,36 @@ def generate_interaction_matrix_batch(req: InteractionMatrixBatchRequest):
 
         jobs.append((m, r, item.model_id))
 
-
     if jobs:
+        # 2. Submit jobs to the shared executor
+        futures = {
+            solver_executor.submit(compute_interaction_matrix_worker, m, r, model_id): model_id
+            for (m, r, model_id) in jobs
+        }
 
-        # 2. Run full parallel computation
-        with ProcessPoolExecutor(max_workers=8) as executor:
-            futures = {
-                executor.submit(compute_interaction_matrix_worker, m, r, model_id): model_id
-                for (m, r, model_id) in jobs
-            }
+        # 3. Gather results
+        for future in as_completed(futures):
+            model_id = futures[future]
+            try:
+                interaction_matrix = future.result()
 
-            for future in as_completed(futures):
-                model_id = futures[future]
-                try:
-                    interaction_matrix = future.result()
+                result = interaction_collection.insert_one({
+                    "model_id": model_id,
+                    "interaction_df": interaction_matrix
+                })
 
-                    result = interaction_collection.insert_one({
-                        "model_id": model_id,
-                        "interaction_df": interaction_matrix
-                    })
+                results.append(ModelResponse(
+                    model_id=model_id,
+                    interaction_matrix_id=str(result.inserted_id),
+                    status="interaction matrix generated and saved to mongodb"
+                ))
 
-                    results.append(ModelResponse(
-                        model_id=model_id,
-                        interaction_matrix_id=str(result.inserted_id),
-                        status="interaction matrix generated and saved to mongodb"
-                    ))
-
-                except Exception as e:
-                    results.append(ModelResponse(
-                        model_id=model_id,
-                        interaction_matrix_id=None,
-                        status=f"failed: {e}"
-                    ))
+            except Exception as e:
+                results.append(ModelResponse(
+                    model_id=model_id,
+                    interaction_matrix_id=None,
+                    status=f"failed: {e}"
+                ))
 
     successful = sum(1 for r in results if r.interaction_matrix_id is not None)
 
@@ -246,8 +250,13 @@ def generate_interaction_matrix_batch(req: InteractionMatrixBatchRequest):
         results=results
     )
 
+
 @app.post("/generate_interaction_matrix_dict/batch", response_model=InteractionMatrixDictBatchResponse)
 def generate_interaction_matrix_dict_batch(req: InteractionMatrixDictBatchRequest):
+    """Batch endpoint using the shared solver_executor"""
+    
+    if solver_executor is None:
+        raise HTTPException(status_code=503, detail="ProcessPoolExecutor not initialized")
 
     jobs = []
     results: List[ModelResponse_dict] = []
@@ -263,7 +272,6 @@ def generate_interaction_matrix_dict_batch(req: InteractionMatrixDictBatchReques
             if not rc_json:
                 raise ValueError(f"rate_constant not found for {item.rate_constant_id}")
 
-            # Append as a job: (model_json, rate_constant_json, model_id, interaction_matrix_id)
             jobs.append((m_json, rc_json, item.model_id, item.interaction_matrix_id))
 
         except Exception as e:
@@ -274,45 +282,46 @@ def generate_interaction_matrix_dict_batch(req: InteractionMatrixDictBatchReques
                     status=f"failed before multiprocessing: {str(e)}"
                 )
             )
+
     if jobs:
-    # 2. Compute all interaction_dicts in parallel
-        with ProcessPoolExecutor(max_workers=8) as executor:
-            futures = {
-                executor.submit(
-                    compute_interaction_dict_worker,
-                    m_json, rc_json, model_id, im_id
-                ): (model_id,im_id)
-                for (m_json, rc_json, model_id, im_id) in jobs
-            }
+        # 2. Submit jobs to the shared executor
+        futures = {
+            solver_executor.submit(
+                compute_interaction_dict_worker,
+                m_json, rc_json, model_id, im_id
+            ): (model_id, im_id)
+            for (m_json, rc_json, model_id, im_id) in jobs
+        }
 
-            # 3. Gather worker results
-            for future in as_completed(futures):
-                model_id,im_id = futures[future]
-                try:
-                    interaction_dict = future.result()
+        # 3. Gather worker results
+        for future in as_completed(futures):
+            model_id, im_id = futures[future]
+            try:
+                interaction_dict = future.result()
 
-                    # 4. Write back to MongoDB (main process)
-                    interaction_collection.update_one(
-                        {"_id": ObjectId(im_id)},
-                        {"$set": {"interaction_dict": interaction_dict}}
+                # 4. Write back to MongoDB (main process)
+                interaction_collection.update_one(
+                    {"_id": ObjectId(im_id)},
+                    {"$set": {"interaction_dict": interaction_dict}}
+                )
+
+                results.append(
+                    ModelResponse_dict(
+                        model_id=model_id,
+                        interaction_matrix_id=im_id,
+                        status="interaction matrix_dict generated (parallel)"
                     )
+                )
 
-                    results.append(
-                        ModelResponse_dict(
-                            model_id=model_id,
-                            interaction_matrix_id=im_id,
-                            status="interaction matrix_dict generated (parallel)"
-                        )
+            except Exception as e:
+                results.append(
+                    ModelResponse_dict(
+                        model_id=model_id,
+                        interaction_matrix_id=im_id,  # Keep the original im_id even on failure
+                        status=f"failed: {e}"
                     )
+                )
 
-                except Exception as e:
-                    results.append(
-                        ModelResponse_dict(
-                            model_id=model_id,
-                            interaction_matrix_id=None,
-                            status=f"failed: {e}"
-                        )
-                    )
     successful = sum(1 for r in results if "failed" not in r.status)
     return InteractionMatrixDictBatchResponse(
         status="success" if successful > 0 else "all_failed",
