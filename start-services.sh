@@ -13,7 +13,8 @@ uvicorn src.utopia.microservice.estimate_flow.estimate_flow_app:app --reload --p
 uvicorn src.utopia.microservice.process_result.process_result_app:app --reload --port 8008 &
 uvicorn src.utopia.microservice.plot_fraction_distribution.plot_fraction_distribution_app:app --reload --port 8009 &
 uvicorn src.utopia.microservice.plot_compartment_distribution.plot_compartment_distribution_app:app --reload --port 8010 &
-
+uvicorn src.utopia.microservice.calculate_exposure_indicator.calculate_exposure_indicator_app:app --reload --port 8011 &
+uvicorn src.utopia.microservice.plot_emission_fraction.plot_emission_fraction_app:app --reload --port 8012 &
 
 echo "All services started!"
 echo "Press Ctrl+C to stop all services"
